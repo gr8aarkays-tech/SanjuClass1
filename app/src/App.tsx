@@ -17,7 +17,7 @@ import { Settings } from './pages/Settings';
 export default function App() {
   return (
     <AppProvider>
-      <BrowserRouter>
+      <BrowserRouter basename="/SanjuClass1">
         <Layout>
           <Routes>
             <Route path="/" element={<Dashboard />} />
