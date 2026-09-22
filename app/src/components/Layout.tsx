@@ -85,8 +85,8 @@ export function Layout({ children }: { children: React.ReactNode }) {
             <GraduationCap className="w-5 h-5 text-white" />
           </div>
           <div className="min-w-0">
-            <p className="text-sm font-bold leading-tight" style={{ color: 'var(--color-text)' }}>School AI</p>
-            <p className="text-xs truncate" style={{ color: 'var(--color-text-muted)' }}>Learning Assistant</p>
+            <p className="text-sm font-bold leading-tight" style={{ color: 'var(--color-text)' }}>SchoolBuddy</p>
+            <p className="text-xs truncate" style={{ color: 'var(--color-text-muted)' }}>AI Learning Assistant</p>
           </div>
           <button
             className="ml-auto lg:hidden"

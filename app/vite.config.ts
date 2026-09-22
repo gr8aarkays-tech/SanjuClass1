@@ -10,8 +10,8 @@ export default defineConfig({
       registerType: 'autoUpdate',
       includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'masked-icon.svg'],
       manifest: {
-        name: 'AI School Learning Assistant',
-        short_name: 'SchoolAI',
+        name: 'SchoolBuddy – AI Learning Assistant',
+        short_name: 'SchoolBuddy',
         description: 'AI-powered school learning assistant for parents',
         theme_color: '#2563eb',
         background_color: '#ffffff',
