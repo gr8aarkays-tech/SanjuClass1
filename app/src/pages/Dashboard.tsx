@@ -1,24 +1,54 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import {
-  Upload, Calendar, GraduationCap, BookOpen,
-  FileQuestion, AlertTriangle, CheckCircle,
-  Clock, TrendingUp, FileText, Zap,
+  Upload, GraduationCap, BookOpen, FileQuestion,
+  AlertTriangle, CheckCircle, FileText, Zap,
 } from 'lucide-react';
 import { useApp } from '../contexts/AppContext';
-import { StatusBadge, ProgressBar, SectionHeader } from '../components/shared/UI';
+import { ProgressBar, SectionHeader } from '../components/shared/UI';
 import { MATERIAL_TYPE_LABELS, EXAM_TYPE_LABELS } from '../types';
+
+// ── Per-subject emoji + color ───────────────────────────────────────────────
+const SUBJECT_META: Record<string, { emoji: string; color: string }> = {
+  Mathematics:     { emoji: '🔢', color: '#3b82f6' },
+  English:         { emoji: '📖', color: '#10b981' },
+  EVS:             { emoji: '🌿', color: '#22c55e' },
+  Science:         { emoji: '🔬', color: '#8b5cf6' },
+  'Social Studies':{ emoji: '🌍', color: '#f59e0b' },
+  Hindi:           { emoji: '🇮🇳', color: '#ef4444' },
+  Kannada:         { emoji: '🌸', color: '#ec4899' },
+  Telugu:          { emoji: '🌺', color: '#f97316' },
+};
+
+// Fun greetings based on time of day
+function getGreeting() {
+  const h = new Date().getHours();
+  if (h < 12) return { text: 'Good morning', emoji: '🌅' };
+  if (h < 17) return { text: 'Good afternoon', emoji: '☀️' };
+  return { text: 'Good evening', emoji: '🌙' };
+}
+
+// Motivational quote cycle
+const MOTIVATIONAL = [
+  { quote: 'Every expert was once a beginner.', emoji: '🌱' },
+  { quote: 'Reading is to the mind what exercise is to the body.', emoji: '💪' },
+  { quote: 'Practice makes perfect!', emoji: '⭐' },
+  { quote: 'Learning is a treasure that follows its owner everywhere.', emoji: '🏆' },
+  { quote: 'The more that you read, the more things you will know.', emoji: '📚' },
+];
 
 export function Dashboard() {
   const { selectedChild, getChildExams, getChildMaterials, getChildSubjects, getSubjectChapters, getChapterTopics, getChildQuestionPapers } = useApp();
+  const greeting = getGreeting();
+  const quote = MOTIVATIONAL[new Date().getDay() % MOTIVATIONAL.length];
 
   if (!selectedChild) {
     return (
       <div className="flex flex-col items-center justify-center py-20 text-center">
-        <GraduationCap className="w-16 h-16 text-gray-300 mb-4" />
-        <h2 className="text-xl font-semibold text-gray-700 mb-2">No child selected</h2>
-        <p className="text-gray-500 mb-4">Add a child to get started</p>
-        <Link to="/children" className="btn-primary">Manage Children</Link>
+        <div className="text-7xl mb-4 animate-bounce">🎒</div>
+        <h2 className="text-xl font-semibold mb-2" style={{ color: 'var(--color-text)' }}>No child selected</h2>
+        <p className="mb-4" style={{ color: 'var(--color-text-muted)' }}>Add your child to get started!</p>
+        <Link to="/children" className="btn-primary">👶 Manage Children</Link>
       </div>
     );
   }
@@ -28,22 +58,19 @@ export function Dashboard() {
   const subjects = getChildSubjects(selectedChild.id);
   const questionPapers = getChildQuestionPapers(selectedChild.id);
 
-  // Compute stats
   const upcomingExam = exams.find(e => e.preparationStatus !== 'completed');
   const pendingMaterials = materials.filter(m => m.processingStatus === 'requires_review').length;
   const recentMaterials = materials.slice(0, 3);
 
-  // Topics needing attention
   const attentionTopics: { topic: string; subject: string; chapter: string }[] = [];
   subjects.forEach(sub => {
     getSubjectChapters(sub.id).forEach(ch => {
-      getChapterTopics(ch.id).filter(t => t.studyStatus === 'needs_revision' || t.studyStatus === 'not_started').forEach(t => {
-        attentionTopics.push({ topic: t.name, subject: sub.name, chapter: ch.name });
-      });
+      getChapterTopics(ch.id)
+        .filter(t => t.studyStatus === 'needs_revision' || t.studyStatus === 'not_started')
+        .forEach(t => attentionTopics.push({ topic: t.name, subject: sub.name, chapter: ch.name }));
     });
   });
 
-  // Subject progress
   const subjectProgress = subjects.map(sub => {
     const chs = getSubjectChapters(sub.id);
     const allTopics = chs.flatMap(c => getChapterTopics(c.id));
@@ -56,171 +83,287 @@ export function Dashboard() {
     ? Math.max(0, Math.ceil((new Date(upcomingExam.startDate).getTime() - Date.now()) / 86400000))
     : null;
 
+  const overallProgress = subjectProgress.length
+    ? Math.round(subjectProgress.reduce((s, p) => s + p.progress, 0) / subjectProgress.length)
+    : 0;
+
   return (
-    <div className="space-y-6">
-      {/* Welcome banner */}
-      <div className="bg-gradient-to-r from-blue-600 to-blue-700 rounded-2xl p-5 text-white">
-        <p className="text-blue-100 text-sm mb-1">Welcome back!</p>
-        <h2 className="text-xl font-bold mb-1">{selectedChild.name}'s Learning Dashboard</h2>
-        <p className="text-blue-100 text-sm">Class {selectedChild.class} · {selectedChild.school}</p>
+    <div className="space-y-5">
+
+      {/* ── Welcome banner ────────────────────────────────────────────── */}
+      <div
+        className="rounded-2xl p-5 text-white relative overflow-hidden"
+        style={{ background: 'linear-gradient(135deg, var(--color-primary) 0%, var(--color-primary-hover) 100%)' }}
+      >
+        {/* Decorative floating emojis */}
+        <span className="absolute right-4 top-3 text-4xl opacity-20 select-none">🎓</span>
+        <span className="absolute right-16 bottom-2 text-3xl opacity-15 select-none">⭐</span>
+        <span className="absolute right-8 top-12 text-2xl opacity-10 select-none">📚</span>
+
+        <p className="text-white/80 text-sm mb-0.5">{greeting.emoji} {greeting.text}!</p>
+        <h2 className="text-xl font-bold mb-1">
+          {selectedChild.name}'s Learning Dashboard 🚀
+        </h2>
+        <p className="text-white/70 text-xs">Class {selectedChild.class} · {selectedChild.school}</p>
+
+        {/* Motivational quote */}
+        <div className="mt-3 pt-3 border-t border-white/20 flex items-start gap-2">
+          <span className="text-xl">{quote.emoji}</span>
+          <p className="text-white/80 text-xs italic">"{quote.quote}"</p>
+        </div>
       </div>
 
-      {/* Quick stats */}
+      {/* ── Overall progress ring + quick stats ───────────────────────── */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <QuickStat icon={<GraduationCap className="w-5 h-5" />} label="Upcoming Exam" value={upcomingExam ? upcomingExam.name.split('–')[0].trim() : 'None'} sub={daysToExam !== null ? `${daysToExam} days away` : ''} color="blue" />
-        <QuickStat icon={<AlertTriangle className="w-5 h-5" />} label="Needs Review" value={pendingMaterials.toString()} sub="uploaded materials" color="yellow" />
-        <QuickStat icon={<FileText className="w-5 h-5" />} label="Question Papers" value={questionPapers.length.toString()} sub="generated" color="purple" />
-        <QuickStat icon={<Zap className="w-5 h-5" />} label="Topics Pending" value={attentionTopics.filter(t => t.topic).length.toString()} sub="need attention" color="red" />
+        <QuickStat emoji="🎓" label="Upcoming Exam"
+          value={upcomingExam ? upcomingExam.name.split('–')[0].trim() : 'None'}
+          sub={daysToExam !== null ? `${daysToExam} days away` : 'No exam scheduled'}
+          color="blue" />
+        <QuickStat emoji="⚠️" label="Needs Review"
+          value={pendingMaterials.toString()}
+          sub="uploaded materials"
+          color="yellow" />
+        <QuickStat emoji="📝" label="Question Papers"
+          value={questionPapers.length.toString()}
+          sub="generated"
+          color="purple" />
+        <QuickStat emoji="🎯" label="Overall Progress"
+          value={`${overallProgress}%`}
+          sub={`${attentionTopics.length} topics pending`}
+          color="green" />
       </div>
 
-      <div className="grid md:grid-cols-2 gap-6">
-        {/* Upcoming exam */}
-        {upcomingExam && (
-          <div className="card">
-            <SectionHeader
-              title="Upcoming Exam"
-              action={<Link to="/exam-prep" className="text-xs text-blue-600 hover:underline">View all</Link>}
-            />
-            <div className="flex items-start gap-3 p-3 bg-orange-50 rounded-xl border border-orange-100">
-              <GraduationCap className="w-5 h-5 text-orange-600 mt-0.5 flex-shrink-0" />
-              <div className="flex-1 min-w-0">
-                <p className="font-semibold text-gray-900 text-sm">{upcomingExam.name}</p>
-                <p className="text-xs text-gray-500 mb-2">{EXAM_TYPE_LABELS[upcomingExam.examType]} · {new Date(upcomingExam.startDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}</p>
-                <div className="flex flex-wrap gap-1">
-                  {upcomingExam.subjects.map(s => (
-                    <span key={s.subjectId} className="badge-blue text-xs">{s.subjectName}</span>
-                  ))}
-                </div>
-              </div>
-            </div>
-            {daysToExam !== null && daysToExam <= 10 && (
-              <div className="mt-3 p-2.5 bg-red-50 rounded-lg border border-red-100">
-                <p className="text-xs text-red-700 font-medium">⏰ Only {daysToExam} days left! Start preparing now.</p>
-              </div>
-            )}
+      {/* ── Urgent exam warning ────────────────────────────────────────── */}
+      {daysToExam !== null && daysToExam <= 7 && upcomingExam && (
+        <div className="rounded-xl p-4 flex items-center gap-3"
+          style={{ background: 'linear-gradient(135deg,#fef3c7,#fde68a)', border: '1px solid #fbbf24' }}>
+          <span className="text-3xl">⏰</span>
+          <div>
+            <p className="font-bold text-amber-900">Exam alert! Only {daysToExam} day{daysToExam !== 1 ? 's' : ''} left!</p>
+            <p className="text-sm text-amber-800">{upcomingExam.name} — time to revise! 💪</p>
           </div>
-        )}
+          <Link to="/exam-prep" className="ml-auto btn-primary text-xs">Prepare Now →</Link>
+        </div>
+      )}
 
-        {/* Subject progress */}
+      <div className="grid md:grid-cols-2 gap-5">
+
+        {/* ── Subject progress ─────────────────────────────────────────── */}
         <div className="card">
           <SectionHeader
-            title="Study Progress"
-            action={<Link to="/study-guide" className="text-xs text-blue-600 hover:underline">Study Guide</Link>}
+            title="📊 Study Progress"
+            action={<Link to="/study-guide" className="text-xs hover:underline" style={{ color: 'var(--color-primary)' }}>Study Guide →</Link>}
           />
           <div className="space-y-3">
             {subjectProgress.length === 0 ? (
-              <p className="text-sm text-gray-400">No subjects added yet</p>
+              <p className="text-sm" style={{ color: 'var(--color-text-muted)' }}>No subjects added yet</p>
             ) : (
-              subjectProgress.map(({ subject, progress, total, done }) => (
-                <div key={subject.id}>
-                  <div className="flex justify-between items-center mb-1">
-                    <span className="text-sm font-medium text-gray-700">{subject.name}</span>
-                    <span className="text-xs text-gray-500">{done}/{total} topics</span>
+              subjectProgress.map(({ subject, progress, total, done }) => {
+                const meta = SUBJECT_META[subject.name] || { emoji: '📚', color: '#6b7280' };
+                return (
+                  <div key={subject.id}>
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-sm font-medium flex items-center gap-1.5" style={{ color: 'var(--color-text)' }}>
+                        <span>{meta.emoji}</span> {subject.name}
+                      </span>
+                      <span className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
+                        {done}/{total}
+                        {progress === 100 ? ' 🏆' : progress >= 60 ? ' 🌟' : ''}
+                      </span>
+                    </div>
+                    <ProgressBar value={progress} showLabel
+                      color={progress === 100 ? 'bg-green-500' : progress >= 60 ? 'bg-blue-500' : 'bg-amber-400'}
+                      size="sm" />
                   </div>
-                  <ProgressBar value={progress} showLabel color="bg-blue-500" size="sm" />
-                </div>
-              ))
+                );
+              })
             )}
           </div>
         </div>
 
-        {/* Topics needing attention */}
+        {/* ── Upcoming exam ────────────────────────────────────────────── */}
+        {upcomingExam ? (
+          <div className="card">
+            <SectionHeader
+              title="📅 Upcoming Exam"
+              action={<Link to="/exam-prep" className="text-xs hover:underline" style={{ color: 'var(--color-primary)' }}>View all →</Link>}
+            />
+            <div className="p-4 rounded-xl" style={{ background: 'linear-gradient(135deg,#fff7ed,#ffedd5)', border: '1px solid #fed7aa' }}>
+              <div className="flex items-start gap-3">
+                <span className="text-3xl">📋</span>
+                <div className="flex-1 min-w-0">
+                  <p className="font-semibold text-orange-900">{upcomingExam.name}</p>
+                  <p className="text-xs text-orange-700 mb-2">
+                    {EXAM_TYPE_LABELS[upcomingExam.examType]} · {new Date(upcomingExam.startDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}
+                  </p>
+                  <div className="flex flex-wrap gap-1">
+                    {upcomingExam.subjects.map(s => {
+                      const meta = SUBJECT_META[s.subjectName] || { emoji: '📚' };
+                      return (
+                        <span key={s.subjectId} className="badge-blue text-xs">
+                          {meta.emoji} {s.subjectName}
+                        </span>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div className="mt-3 grid grid-cols-3 gap-2 text-center">
+              {upcomingExam.subjects.slice(0, 3).map(s => (
+                <div key={s.subjectId} className="rounded-lg p-2" style={{ backgroundColor: 'var(--color-surface)' }}>
+                  <p className="text-xs font-medium truncate" style={{ color: 'var(--color-text)' }}>{s.subjectName}</p>
+                  <p className="text-lg font-bold" style={{ color: s.practiceCompleted >= 60 ? '#16a34a' : '#d97706' }}>
+                    {s.practiceCompleted}%
+                  </p>
+                  <p className="text-[10px]" style={{ color: 'var(--color-text-muted)' }}>done</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : (
+          <div className="card flex flex-col items-center justify-center py-8 text-center">
+            <span className="text-5xl mb-3">🎉</span>
+            <p className="font-semibold" style={{ color: 'var(--color-text)' }}>No upcoming exams!</p>
+            <p className="text-sm mt-1 mb-3" style={{ color: 'var(--color-text-muted)' }}>Great time to get ahead 💪</p>
+            <Link to="/exam-prep" className="btn-secondary text-xs">+ Add Exam</Link>
+          </div>
+        )}
+
+        {/* ── Topics needing attention ─────────────────────────────────── */}
         <div className="card">
           <SectionHeader
-            title="Topics Needing Attention"
-            action={<Link to="/study-guide" className="text-xs text-blue-600 hover:underline">Study Guide</Link>}
+            title="⚡ Topics to Revise"
+            action={<Link to="/study-guide" className="text-xs hover:underline" style={{ color: 'var(--color-primary)' }}>Study Guide →</Link>}
           />
           {attentionTopics.length === 0 ? (
-            <div className="flex items-center gap-2 text-green-600">
-              <CheckCircle className="w-5 h-5" />
-              <span className="text-sm">All topics are on track!</span>
+            <div className="flex items-center gap-3 p-3 rounded-xl" style={{ backgroundColor: 'var(--color-surface)' }}>
+              <span className="text-2xl">🥳</span>
+              <div>
+                <p className="font-medium text-green-700">All caught up!</p>
+                <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>All topics are on track</p>
+              </div>
             </div>
           ) : (
             <div className="space-y-2">
-              {attentionTopics.slice(0, 5).map((item, i) => (
-                <div key={i} className="flex items-center gap-2 p-2 bg-yellow-50 rounded-lg border border-yellow-100">
-                  <AlertTriangle className="w-4 h-4 text-yellow-600 flex-shrink-0" />
-                  <div className="min-w-0">
-                    <p className="text-sm font-medium text-gray-900 truncate">{item.topic}</p>
-                    <p className="text-xs text-gray-500">{item.subject} · {item.chapter}</p>
+              {attentionTopics.slice(0, 5).map((item, i) => {
+                const meta = SUBJECT_META[item.subject] || { emoji: '📚' };
+                return (
+                  <div key={i} className="flex items-center gap-2 p-2.5 rounded-xl"
+                    style={{ backgroundColor: 'var(--color-surface)', border: '1px solid var(--color-border)' }}>
+                    <span className="text-lg flex-shrink-0">{meta.emoji}</span>
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium truncate" style={{ color: 'var(--color-text)' }}>{item.topic}</p>
+                      <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>{item.subject} · {item.chapter}</p>
+                    </div>
+                    <span className="ml-auto text-base">🔄</span>
                   </div>
-                </div>
-              ))}
+                );
+              })}
               {attentionTopics.length > 5 && (
-                <p className="text-xs text-gray-400 text-center">+{attentionTopics.length - 5} more topics</p>
+                <p className="text-xs text-center" style={{ color: 'var(--color-text-muted)' }}>
+                  +{attentionTopics.length - 5} more topics to revise
+                </p>
               )}
             </div>
           )}
         </div>
 
-        {/* Recent uploads */}
+        {/* ── Recent uploads ───────────────────────────────────────────── */}
         <div className="card">
           <SectionHeader
-            title="Recent Uploads"
-            action={<Link to="/upload" className="text-xs text-blue-600 hover:underline">Upload more</Link>}
+            title="📂 Recent Uploads"
+            action={<Link to="/upload" className="text-xs hover:underline" style={{ color: 'var(--color-primary)' }}>Upload more →</Link>}
           />
           {recentMaterials.length === 0 ? (
-            <div className="text-center py-4">
-              <Upload className="w-8 h-8 text-gray-300 mx-auto mb-2" />
-              <p className="text-sm text-gray-400">No uploads yet</p>
-              <Link to="/upload" className="btn-primary text-xs mt-2 inline-block">Upload Materials</Link>
+            <div className="text-center py-5">
+              <span className="text-4xl">📤</span>
+              <p className="text-sm mt-2 mb-3" style={{ color: 'var(--color-text-muted)' }}>No uploads yet</p>
+              <Link to="/upload" className="btn-primary text-xs">Upload Materials</Link>
             </div>
           ) : (
             <div className="space-y-2">
-              {recentMaterials.map(mat => (
-                <div key={mat.id} className="flex items-center gap-3 p-2 hover:bg-gray-50 rounded-lg">
-                  <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${mat.fileType === 'pdf' ? 'bg-red-100' : mat.fileType === 'link' ? 'bg-green-100' : 'bg-blue-100'}`}>
-                    <FileText className={`w-4 h-4 ${mat.fileType === 'pdf' ? 'text-red-600' : mat.fileType === 'link' ? 'text-green-600' : 'text-blue-600'}`} />
+              {recentMaterials.map(mat => {
+                const icon = mat.fileType === 'pdf' ? '📄' : mat.fileType === 'link' ? '🔗' : '🖼';
+                const statusEmoji = mat.processingStatus === 'processed' ? '✅' : mat.processingStatus === 'requires_review' ? '⚠️' : '⏳';
+                return (
+                  <div key={mat.id} className="flex items-center gap-3 p-2.5 rounded-xl"
+                    style={{ backgroundColor: 'var(--color-surface)', border: '1px solid var(--color-border)' }}>
+                    <span className="text-xl flex-shrink-0">{icon}</span>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium truncate" style={{ color: 'var(--color-text)' }}>{mat.fileName}</p>
+                      <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>{MATERIAL_TYPE_LABELS[mat.materialType]}</p>
+                    </div>
+                    <span className="text-base flex-shrink-0">{statusEmoji}</span>
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-gray-900 truncate">{mat.fileName}</p>
-                    <p className="text-xs text-gray-500">{MATERIAL_TYPE_LABELS[mat.materialType]}</p>
-                  </div>
-                  <StatusBadge status={mat.processingStatus === 'processed' ? 'completed' : mat.processingStatus === 'requires_review' ? 'needs_revision' : 'in_progress'} size="sm" />
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>
       </div>
 
-      {/* Quick actions */}
+      {/* ── Quick actions ────────────────────────────────────────────────── */}
       <div className="card">
-        <h2 className="section-title">Quick Actions</h2>
+        <h2 className="section-title">⚡ Quick Actions</h2>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           {[
-            { to: '/upload', icon: Upload, label: 'Upload Material', color: 'bg-blue-50 text-blue-700 hover:bg-blue-100' },
-            { to: '/question-generator', icon: FileQuestion, label: 'Generate Questions', color: 'bg-purple-50 text-purple-700 hover:bg-purple-100' },
-            { to: '/study-guide', icon: BookOpen, label: 'Study Guide', color: 'bg-green-50 text-green-700 hover:bg-green-100' },
-            { to: '/exam-prep', icon: GraduationCap, label: 'Exam Prep', color: 'bg-orange-50 text-orange-700 hover:bg-orange-100' },
-          ].map(({ to, icon: Icon, label, color }) => (
-            <Link key={to} to={to} className={`flex flex-col items-center gap-2 p-4 rounded-xl font-medium text-sm transition-colors ${color}`}>
-              <Icon className="w-6 h-6" />
-              <span className="text-center leading-tight">{label}</span>
+            { to: '/upload',             emoji: '📤', label: 'Upload\nMaterial',    bg: '#dbeafe', fg: '#1e40af' },
+            { to: '/question-generator', emoji: '📝', label: 'Generate\nQuestions', bg: '#ede9fe', fg: '#5b21b6' },
+            { to: '/study-guide',        emoji: '📖', label: 'Study\nGuide',        bg: '#dcfce7', fg: '#166534' },
+            { to: '/exam-prep',          emoji: '🎓', label: 'Exam\nPrep',          bg: '#fef3c7', fg: '#92400e' },
+          ].map(({ to, emoji, label, bg, fg }) => (
+            <Link
+              key={to}
+              to={to}
+              className="flex flex-col items-center gap-2 p-4 rounded-xl font-medium text-sm transition-all hover:scale-105 active:scale-95 text-center"
+              style={{ backgroundColor: bg, color: fg }}
+            >
+              <span className="text-3xl">{emoji}</span>
+              <span className="leading-tight whitespace-pre-line">{label}</span>
             </Link>
           ))}
         </div>
       </div>
+
+      {/* ── Fun learning streak ──────────────────────────────────────────── */}
+      <div className="rounded-2xl p-4 flex items-center gap-4"
+        style={{ background: 'linear-gradient(135deg,#fdf4ff,#ede9fe)', border: '1px solid #ddd6fe' }}>
+        <span className="text-4xl">🔥</span>
+        <div className="flex-1">
+          <p className="font-bold text-purple-900">Keep it up, {selectedChild.name}!</p>
+          <p className="text-sm text-purple-700">Every question you practice brings you closer to the top! 🌟</p>
+        </div>
+        <Link to="/practice" className="flex-shrink-0 px-4 py-2 rounded-xl font-semibold text-sm text-white"
+          style={{ backgroundColor: '#7c3aed' }}>
+          Practice Now 💪
+        </Link>
+      </div>
+
     </div>
   );
 }
 
-function QuickStat({ icon, label, value, sub, color }: { icon: React.ReactNode; label: string; value: string; sub: string; color: string }) {
-  const colors: Record<string, string> = {
-    blue: 'bg-blue-50 text-blue-600',
-    yellow: 'bg-yellow-50 text-yellow-600',
-    purple: 'bg-purple-50 text-purple-600',
-    red: 'bg-red-50 text-red-600',
-    green: 'bg-green-50 text-green-600',
+// ── QuickStat card ────────────────────────────────────────────────────────────
+function QuickStat({ emoji, label, value, sub, color }: {
+  emoji: string; label: string; value: string; sub: string; color: string;
+}) {
+  const bg: Record<string, string> = {
+    blue: 'linear-gradient(135deg,#dbeafe,#bfdbfe)',
+    yellow: 'linear-gradient(135deg,#fef9c3,#fde68a)',
+    purple: 'linear-gradient(135deg,#f3e8ff,#ddd6fe)',
+    green: 'linear-gradient(135deg,#dcfce7,#bbf7d0)',
+    red: 'linear-gradient(135deg,#fee2e2,#fecaca)',
+  };
+  const fg: Record<string, string> = {
+    blue: '#1e40af', yellow: '#92400e', purple: '#5b21b6', green: '#166534', red: '#991b1b',
   };
   return (
-    <div className="card flex flex-col gap-2">
-      <div className={`w-9 h-9 rounded-lg flex items-center justify-center ${colors[color]}`}>{icon}</div>
-      <div>
-        <p className="text-xs text-gray-500">{label}</p>
-        <p className="text-lg font-bold text-gray-900 leading-tight">{value}</p>
-        <p className="text-xs text-gray-400">{sub}</p>
-      </div>
+    <div className="rounded-xl p-3 flex flex-col gap-1" style={{ background: bg[color] || bg.blue, border: '1px solid rgba(0,0,0,0.06)' }}>
+      <span className="text-2xl">{emoji}</span>
+      <p className="text-xs font-medium" style={{ color: fg[color] }}>{label}</p>
+      <p className="text-lg font-bold leading-tight" style={{ color: fg[color] }}>{value}</p>
+      <p className="text-[11px]" style={{ color: fg[color], opacity: 0.75 }}>{sub}</p>
     </div>
   );
 }
