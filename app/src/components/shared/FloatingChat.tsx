@@ -1,7 +1,11 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Bot, Send, X, Loader, ChevronDown, Sparkles } from 'lucide-react';
+import { Send, X, Loader, ChevronDown, Sparkles } from 'lucide-react';
+import { DotLottieReact } from '@lottiefiles/dotlottie-react';
 import { useApp } from '../../contexts/AppContext';
 import { chatWithAssistant } from '../../services/aiService';
+
+// LottieFiles: Robot Says Hi — https://lottiefiles.com/free-animation/robot-says-hi-9kNmfFz2s8
+const ROBOT_LOTTIE_SRC = 'https://assets3.lottiefiles.com/packages/lf20_9kNmfFz2s8.json';
 
 interface Message {
   id: string;
@@ -140,18 +144,23 @@ export function FloatingChat({ currentPage }: FloatingChatProps) {
       {!open && (
         <button
           onClick={handleOpen}
-          className="fixed bottom-5 right-5 z-50 w-14 h-14 rounded-full shadow-2xl flex items-center justify-center transition-all hover:scale-110 active:scale-95"
+          className="fixed bottom-5 right-5 z-50 w-16 h-16 rounded-full shadow-2xl flex items-center justify-center transition-all hover:scale-110 active:scale-95 overflow-hidden"
           style={{ backgroundColor: 'var(--color-primary)' }}
           aria-label="Open AI Assistant"
         >
-          <Bot className="w-7 h-7 text-white" />
+          <DotLottieReact
+            src={ROBOT_LOTTIE_SRC}
+            loop
+            autoplay
+            style={{ width: 52, height: 52 }}
+          />
           {unread > 0 && (
             <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 rounded-full flex items-center justify-center text-white text-[10px] font-bold">
               {unread}
             </span>
           )}
           {/* Pulse ring */}
-          <span className="absolute w-14 h-14 rounded-full animate-ping opacity-20"
+          <span className="absolute w-16 h-16 rounded-full animate-ping opacity-20"
             style={{ backgroundColor: 'var(--color-primary)' }} />
         </button>
       )}
@@ -174,8 +183,13 @@ export function FloatingChat({ currentPage }: FloatingChatProps) {
             className="flex items-center gap-2 px-3 py-2.5 flex-shrink-0"
             style={{ backgroundColor: 'var(--color-primary)' }}
           >
-            <div className="w-7 h-7 bg-white/20 rounded-full flex items-center justify-center flex-shrink-0">
-              <Bot className="w-4 h-4 text-white" />
+            <div className="w-9 h-9 bg-white/20 rounded-full flex items-center justify-center flex-shrink-0 overflow-hidden">
+              <DotLottieReact
+                src={ROBOT_LOTTIE_SRC}
+                loop
+                autoplay
+                style={{ width: 36, height: 36 }}
+              />
             </div>
             <div className="flex-1 min-w-0">
               <p className="text-sm font-semibold text-white leading-tight">AI Assistant</p>
@@ -206,9 +220,14 @@ export function FloatingChat({ currentPage }: FloatingChatProps) {
                 {messages.map(msg => (
                   <div key={msg.id} className={`flex gap-2 ${msg.role === 'user' ? 'flex-row-reverse' : ''}`}>
                     {msg.role === 'assistant' && (
-                      <div className="w-6 h-6 rounded-full flex-shrink-0 flex items-center justify-center mt-0.5"
+                      <div className="w-7 h-7 rounded-full flex-shrink-0 flex items-center justify-center mt-0.5 overflow-hidden"
                         style={{ backgroundColor: 'var(--color-primary-light)' }}>
-                        <Bot className="w-3.5 h-3.5" style={{ color: 'var(--color-primary)' }} />
+                        <DotLottieReact
+                          src={ROBOT_LOTTIE_SRC}
+                          loop
+                          autoplay
+                          style={{ width: 28, height: 28 }}
+                        />
                       </div>
                     )}
                     <div
@@ -227,9 +246,14 @@ export function FloatingChat({ currentPage }: FloatingChatProps) {
 
                 {loading && (
                   <div className="flex gap-2">
-                    <div className="w-6 h-6 rounded-full flex-shrink-0 flex items-center justify-center"
+                    <div className="w-7 h-7 rounded-full flex-shrink-0 flex items-center justify-center overflow-hidden"
                       style={{ backgroundColor: 'var(--color-primary-light)' }}>
-                      <Bot className="w-3.5 h-3.5" style={{ color: 'var(--color-primary)' }} />
+                      <DotLottieReact
+                        src={ROBOT_LOTTIE_SRC}
+                        loop
+                        autoplay
+                        style={{ width: 28, height: 28 }}
+                      />
                     </div>
                     <div className="px-3 py-2 rounded-2xl rounded-tl-sm flex gap-1 items-center"
                       style={{ backgroundColor: 'var(--color-surface)', border: '1px solid var(--color-border)' }}>
