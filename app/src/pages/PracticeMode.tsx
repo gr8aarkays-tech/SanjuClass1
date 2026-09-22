@@ -1,10 +1,12 @@
 import React, { useState } from 'react';
-import { Dumbbell, ChevronLeft, CheckCircle, XCircle, Trophy } from 'lucide-react';
+import { Dumbbell, ChevronLeft, CheckCircle, XCircle, Trophy, FileQuestion, Plus } from 'lucide-react';
 import { useApp } from '../contexts/AppContext';
+import { useNavigate } from 'react-router-dom';
 import type { Question } from '../types';
 
 export function PracticeMode() {
   const { selectedChild, getChildQuestionPapers, addPracticeAttempt } = useApp();
+  const navigate = useNavigate();
   const [selectedPaperId, setSelectedPaperId] = useState<string | null>(null);
   const [currentIdx, setCurrentIdx] = useState(0);
   const [answers, setAnswers] = useState<Record<string, string>>({});
@@ -18,29 +20,63 @@ export function PracticeMode() {
 
   if (!selectedPaperId || !selectedPaper) {
     return (
-      <div className="space-y-6">
+      <div className="space-y-4">
+        {/* Header row with generator shortcut */}
+        <div className="flex items-center justify-between">
+          <p className="text-sm" style={{ color: 'var(--color-text-muted)' }}>
+            {papers.length} paper{papers.length !== 1 ? 's' : ''} available
+          </p>
+          <button
+            onClick={() => navigate('/question-generator')}
+            className="btn-primary flex items-center gap-2 text-sm"
+          >
+            <Plus className="w-4 h-4" /> Generate New Paper
+          </button>
+        </div>
+
         <div className="card">
-          <h2 className="section-title">Practice Mode</h2>
-          <p className="text-sm text-gray-600 mb-4">Select a question paper to practice.</p>
+          <h2 className="section-title">Select a Question Paper</h2>
           {papers.length === 0 ? (
-            <div className="text-center py-8 text-gray-400">
-              <Dumbbell className="w-10 h-10 mx-auto mb-2 opacity-40" />
-              <p>No question papers generated yet. Go to Question Generator to create one.</p>
+            <div className="text-center py-10">
+              <Dumbbell className="w-12 h-12 mx-auto mb-3 opacity-20" style={{ color: 'var(--color-text-muted)' }} />
+              <p className="font-semibold mb-1" style={{ color: 'var(--color-text)' }}>No question papers yet</p>
+              <p className="text-sm mb-4" style={{ color: 'var(--color-text-muted)' }}>
+                Use the Question Generator to create a customised practice paper for your child.
+              </p>
+              <button
+                onClick={() => navigate('/question-generator')}
+                className="btn-primary flex items-center gap-2 mx-auto"
+              >
+                <FileQuestion className="w-4 h-4" /> Go to Question Generator
+              </button>
             </div>
           ) : (
             <div className="space-y-2">
               {papers.map(paper => (
                 <div
                   key={paper.id}
-                  className="flex items-center gap-3 p-4 border border-gray-200 rounded-xl hover:border-blue-300 hover:bg-blue-50 cursor-pointer transition-all"
+                  className="flex items-center gap-3 p-4 rounded-xl cursor-pointer transition-all"
+                  style={{
+                    border: '1px solid var(--color-card-border)',
+                    backgroundColor: 'var(--color-card-bg)',
+                  }}
+                  onMouseEnter={e => (e.currentTarget.style.borderColor = 'var(--color-primary)')}
+                  onMouseLeave={e => (e.currentTarget.style.borderColor = 'var(--color-card-border)')}
                   onClick={() => { setSelectedPaperId(paper.id); setCurrentIdx(0); setAnswers({}); setSubmitted(false); }}
                 >
-                  <Dumbbell className="w-6 h-6 text-blue-500 flex-shrink-0" />
-                  <div className="flex-1">
-                    <p className="font-medium text-gray-900">{paper.title}</p>
-                    <p className="text-xs text-gray-500">{paper.questions.length} questions · {paper.totalMarks} marks</p>
+                  <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
+                    style={{ backgroundColor: 'var(--color-primary-light)' }}>
+                    <Dumbbell className="w-5 h-5" style={{ color: 'var(--color-primary)' }} />
                   </div>
-                  <span className="text-blue-600 text-sm">Start →</span>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-medium truncate" style={{ color: 'var(--color-text)' }}>{paper.title}</p>
+                    <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
+                      {paper.questions.length} questions · {paper.totalMarks} marks · {paper.config.difficulty} difficulty
+                    </p>
+                  </div>
+                  <span className="text-sm font-medium flex-shrink-0" style={{ color: 'var(--color-primary)' }}>
+                    Start →
+                  </span>
                 </div>
               ))}
             </div>

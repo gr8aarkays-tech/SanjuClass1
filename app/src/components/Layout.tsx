@@ -1,13 +1,15 @@
 import React, { useState } from 'react';
-import { NavLink, useLocation, Navigate } from 'react-router-dom';
+import { NavLink, useLocation, Navigate, useNavigate } from 'react-router-dom';
 import { useApp } from '../contexts/AppContext';
 import { useAuth } from '../contexts/AuthContext';
 import { ThemePicker } from './shared/ThemePicker';
+import { FloatingChat } from './shared/FloatingChat';
 import {
   LayoutDashboard, Upload, Calendar, BookOpen,
   FileQuestion, Dumbbell, Library, Users, Settings,
   GraduationCap, Menu, X, ChevronDown, Bot, LogOut, User,
 } from 'lucide-react';
+import { useEffect, useRef } from 'react';
 
 const navItems = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard },
@@ -28,12 +30,31 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const { selectedChild, children: childList, selectChild } = useApp();
   const { user, logout } = useAuth();
   const [childDropdownOpen, setChildDropdownOpen] = useState(false);
-  const [userMenuOpen, setUserMenuOpen] = useState(false);
   const location = useLocation();
+  const navigate = useNavigate();
+
+  // ── Fix 2: close child dropdown on outside click ──────────────────────────
+  const childDropdownRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!childDropdownOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (childDropdownRef.current && !childDropdownRef.current.contains(e.target as Node)) {
+        setChildDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [childDropdownOpen]);
 
   const currentPage = navItems.find(n =>
     n.to === '/' ? location.pathname === '/' : location.pathname.startsWith(n.to)
   )?.label || 'Dashboard';
+
+  // ── Fix 1: navigate to dashboard on logo click ────────────────────────────
+  const handleLogoClick = () => {
+    navigate('/');
+    setSidebarOpen(false);
+  };
 
   return (
     <div className="min-h-screen flex" style={{ backgroundColor: 'var(--color-bg)' }}>
@@ -51,8 +72,14 @@ export function Layout({ children }: { children: React.ReactNode }) {
           borderRight: '1px solid var(--color-sidebar-border)',
         }}
       >
-        {/* Logo */}
-        <div className="flex items-center gap-3 px-4 py-4" style={{ borderBottom: '1px solid var(--color-sidebar-border)' }}>
+        {/* Logo — Fix 1: clickable, navigates to dashboard */}
+        <div
+          className="flex items-center gap-3 px-4 py-4 cursor-pointer hover:opacity-80 transition-opacity select-none"
+          style={{ borderBottom: '1px solid var(--color-sidebar-border)' }}
+          onClick={handleLogoClick}
+          role="button"
+          aria-label="Go to Dashboard"
+        >
           <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
             style={{ backgroundColor: 'var(--color-primary)' }}>
             <GraduationCap className="w-5 h-5 text-white" />
@@ -61,16 +88,20 @@ export function Layout({ children }: { children: React.ReactNode }) {
             <p className="text-sm font-bold leading-tight" style={{ color: 'var(--color-text)' }}>School AI</p>
             <p className="text-xs truncate" style={{ color: 'var(--color-text-muted)' }}>Learning Assistant</p>
           </div>
-          <button className="ml-auto lg:hidden" style={{ color: 'var(--color-text-muted)' }} onClick={() => setSidebarOpen(false)}>
+          <button
+            className="ml-auto lg:hidden"
+            style={{ color: 'var(--color-text-muted)' }}
+            onClick={e => { e.stopPropagation(); setSidebarOpen(false); }}
+          >
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        {/* Child selector */}
+        {/* Child selector — Fix 2: ref-based outside-click close */}
         <div className="px-3 py-3" style={{ borderBottom: '1px solid var(--color-sidebar-border)' }}>
-          <div className="relative">
+          <div className="relative" ref={childDropdownRef}>
             <button
-              onClick={() => setChildDropdownOpen(!childDropdownOpen)}
+              onClick={() => setChildDropdownOpen(v => !v)}
               className="w-full flex items-center gap-2 p-2 rounded-lg hover:opacity-80 text-left transition-opacity"
             >
               <div className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0"
@@ -85,13 +116,17 @@ export function Layout({ children }: { children: React.ReactNode }) {
                 </p>
                 <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>Class {selectedChild?.class}</p>
               </div>
-              <ChevronDown className={`w-4 h-4 transition-transform ${childDropdownOpen ? 'rotate-180' : ''}`}
-                style={{ color: 'var(--color-text-muted)' }} />
+              <ChevronDown
+                className={`w-4 h-4 transition-transform ${childDropdownOpen ? 'rotate-180' : ''}`}
+                style={{ color: 'var(--color-text-muted)' }}
+              />
             </button>
 
             {childDropdownOpen && (
-              <div className="absolute top-full left-0 right-0 mt-1 rounded-lg shadow-lg z-10 overflow-hidden"
-                style={{ backgroundColor: 'var(--color-card-bg)', border: '1px solid var(--color-card-border)' }}>
+              <div
+                className="absolute top-full left-0 right-0 mt-1 rounded-lg shadow-lg z-10 overflow-hidden"
+                style={{ backgroundColor: 'var(--color-card-bg)', border: '1px solid var(--color-card-border)' }}
+              >
                 {childList.map((child: any) => (
                   <button
                     key={child.id}
@@ -102,8 +137,10 @@ export function Layout({ children }: { children: React.ReactNode }) {
                       color: selectedChild?.id === child.id ? 'var(--color-primary-text)' : 'var(--color-text)',
                     }}
                   >
-                    <span className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold"
-                      style={{ backgroundColor: 'var(--color-primary-light)', color: 'var(--color-primary)' }}>
+                    <span
+                      className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold"
+                      style={{ backgroundColor: 'var(--color-primary-light)', color: 'var(--color-primary)' }}
+                    >
                       {child.name.charAt(0)}
                     </span>
                     <span>{child.name}</span>
@@ -138,8 +175,10 @@ export function Layout({ children }: { children: React.ReactNode }) {
         {/* User footer */}
         <div className="p-3" style={{ borderTop: '1px solid var(--color-sidebar-border)' }}>
           <div className="flex items-center gap-2 p-2 rounded-lg">
-            <div className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0"
-              style={{ backgroundColor: 'var(--color-primary-light)' }}>
+            <div
+              className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0"
+              style={{ backgroundColor: 'var(--color-primary-light)' }}
+            >
               <User className="w-4 h-4" style={{ color: 'var(--color-primary)' }} />
             </div>
             <div className="flex-1 min-w-0">
@@ -175,20 +214,27 @@ export function Layout({ children }: { children: React.ReactNode }) {
           >
             <Menu className="w-5 h-5" />
           </button>
-          <h1 className="text-base font-semibold" style={{ color: 'var(--color-text)' }}>{currentPage}</h1>
+
+          {/* Fix 1: header title is also a home link */}
+          <button
+            className="text-base font-semibold hover:opacity-70 transition-opacity"
+            style={{ color: 'var(--color-text)' }}
+            onClick={() => navigate('/')}
+          >
+            {currentPage}
+          </button>
 
           <div className="ml-auto flex items-center gap-2">
-            {/* Theme picker */}
             <ThemePicker />
-
-            {/* Child chip */}
             {selectedChild && (
               <span
                 className="hidden sm:flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full font-medium"
                 style={{ backgroundColor: 'var(--color-primary-light)', color: 'var(--color-primary-text)' }}
               >
-                <span className="w-4 h-4 rounded-full flex items-center justify-center text-white text-[10px] font-bold"
-                  style={{ backgroundColor: 'var(--color-primary)' }}>
+                <span
+                  className="w-4 h-4 rounded-full flex items-center justify-center text-white text-[10px] font-bold"
+                  style={{ backgroundColor: 'var(--color-primary)' }}
+                >
                   {selectedChild.name.charAt(0)}
                 </span>
                 {selectedChild.name} · Class {selectedChild.class}
@@ -204,6 +250,9 @@ export function Layout({ children }: { children: React.ReactNode }) {
           </div>
         </main>
       </div>
+
+      {/* Fix 4: Floating AI chatbot — always visible bottom-right */}
+      <FloatingChat currentPage={currentPage} />
     </div>
   );
 }
