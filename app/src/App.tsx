@@ -1,7 +1,10 @@
 import React from 'react';
-import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AppProvider } from './contexts/AppContext';
-import { Layout } from './components/Layout';
+import { AuthProvider } from './contexts/AuthContext';
+import { ThemeProvider } from './contexts/ThemeContext';
+import { ProtectedLayout } from './components/Layout';
+import { LoginPage, RegisterPage } from './pages/AuthPages';
 import { Dashboard } from './pages/Dashboard';
 import { UploadMaterials } from './pages/UploadMaterials';
 import { WeeklyPlan } from './pages/WeeklyPlan';
@@ -16,24 +19,34 @@ import { Settings } from './pages/Settings';
 
 export default function App() {
   return (
-    <AppProvider>
-      <BrowserRouter basename="/SanjuClass1">
-        <Layout>
-          <Routes>
-            <Route path="/" element={<Dashboard />} />
-            <Route path="/upload" element={<UploadMaterials />} />
-            <Route path="/weekly-plan" element={<WeeklyPlan />} />
-            <Route path="/exam-prep" element={<ExamPreparation />} />
-            <Route path="/study-guide" element={<StudyGuide />} />
-            <Route path="/question-generator" element={<QuestionGenerator />} />
-            <Route path="/practice" element={<PracticeMode />} />
-            <Route path="/library" element={<QuestionLibrary />} />
-            <Route path="/children" element={<Children />} />
-            <Route path="/assistant" element={<AIAssistant />} />
-            <Route path="/settings" element={<Settings />} />
-          </Routes>
-        </Layout>
-      </BrowserRouter>
-    </AppProvider>
+    <ThemeProvider>
+      <AuthProvider>
+        <AppProvider>
+          <BrowserRouter basename="/SanjuClass1">
+            <Routes>
+              {/* Public routes */}
+              <Route path="/login" element={<LoginPage />} />
+              <Route path="/register" element={<RegisterPage />} />
+
+              {/* Protected routes — wrapped in ProtectedLayout */}
+              <Route path="/" element={<ProtectedLayout><Dashboard /></ProtectedLayout>} />
+              <Route path="/upload" element={<ProtectedLayout><UploadMaterials /></ProtectedLayout>} />
+              <Route path="/weekly-plan" element={<ProtectedLayout><WeeklyPlan /></ProtectedLayout>} />
+              <Route path="/exam-prep" element={<ProtectedLayout><ExamPreparation /></ProtectedLayout>} />
+              <Route path="/study-guide" element={<ProtectedLayout><StudyGuide /></ProtectedLayout>} />
+              <Route path="/question-generator" element={<ProtectedLayout><QuestionGenerator /></ProtectedLayout>} />
+              <Route path="/practice" element={<ProtectedLayout><PracticeMode /></ProtectedLayout>} />
+              <Route path="/library" element={<ProtectedLayout><QuestionLibrary /></ProtectedLayout>} />
+              <Route path="/children" element={<ProtectedLayout><Children /></ProtectedLayout>} />
+              <Route path="/assistant" element={<ProtectedLayout><AIAssistant /></ProtectedLayout>} />
+              <Route path="/settings" element={<ProtectedLayout><Settings /></ProtectedLayout>} />
+
+              {/* Catch-all */}
+              <Route path="*" element={<Navigate to="/" replace />} />
+            </Routes>
+          </BrowserRouter>
+        </AppProvider>
+      </AuthProvider>
+    </ThemeProvider>
   );
 }
