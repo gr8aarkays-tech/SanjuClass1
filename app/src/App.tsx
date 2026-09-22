@@ -22,7 +22,7 @@ export default function App() {
     <ThemeProvider>
       <AuthProvider>
         <AppProvider>
-          <BrowserRouter basename="/SanjuClass1">
+          <BrowserRouter basename="/SchoolBuddy">
             <Routes>
               {/* Public routes */}
               <Route path="/login" element={<LoginPage />} />
