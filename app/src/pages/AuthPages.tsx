@@ -1,7 +1,10 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { GraduationCap, Mail, Lock, Eye, EyeOff, Loader, AlertCircle } from 'lucide-react';
+import { GraduationCap, Mail, Lock, Eye, EyeOff, Loader, AlertCircle, FlaskConical } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
+
+const DEMO_EMAIL = 'tester@test.com';
+const DEMO_PASSWORD = 'test123';
 
 export function LoginPage() {
   const { login } = useAuth();
@@ -11,6 +14,11 @@ export function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+
+  const fillDemo = () => {
+    setEmail(DEMO_EMAIL);
+    setPassword(DEMO_PASSWORD);
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -80,9 +88,25 @@ export function LoginPage() {
         </button>
       </form>
 
-      {/* Demo hint */}
-      <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-lg text-xs text-blue-700">
-        <strong>New here?</strong> Register below to create an account. All data is saved in your browser.
+      {/* Try-it demo banner */}
+      <div className="mt-4 p-3 bg-amber-50 border border-amber-300 rounded-lg text-xs text-amber-800">
+        <div className="flex items-center gap-1.5 font-semibold mb-1.5">
+          <FlaskConical className="w-3.5 h-3.5 flex-shrink-0" />
+          Try the app — demo account
+        </div>
+        <div className="flex items-center justify-between gap-2">
+          <div className="space-y-0.5">
+            <p><span className="font-medium">Email:</span> {DEMO_EMAIL}</p>
+            <p><span className="font-medium">Password:</span> {DEMO_PASSWORD}</p>
+          </div>
+          <button
+            type="button"
+            onClick={fillDemo}
+            className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-amber-500 text-white hover:bg-amber-600 transition-colors flex-shrink-0"
+          >
+            Fill &amp; try
+          </button>
+        </div>
       </div>
 
       <p className="text-center text-sm text-gray-500 mt-4">

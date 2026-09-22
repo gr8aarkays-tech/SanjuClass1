@@ -21,6 +21,9 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 const STORAGE_KEY = 'sanju_auth_user';
 const USERS_KEY = 'sanju_registered_users';
 
+// The fixed ID used for the demo account so AppContext can detect it
+export const DEMO_USER_ID = 'user-demo';
+
 interface StoredUser extends AuthUser {
   passwordHash: string;
 }
@@ -48,12 +51,29 @@ function saveStoredUsers(users: StoredUser[]) {
   localStorage.setItem(USERS_KEY, JSON.stringify(users));
 }
 
+/** Ensure the demo account always exists in localStorage */
+function seedDemoAccount() {
+  const users = getStoredUsers();
+  const exists = users.some(u => u.id === DEMO_USER_ID);
+  if (!exists) {
+    const demoUser: StoredUser = {
+      id: DEMO_USER_ID,
+      name: 'Demo User',
+      email: 'tester@test.com',
+      createdAt: '2024-01-01T00:00:00Z',
+      passwordHash: hashPassword('test123'),
+    };
+    saveStoredUsers([demoUser, ...users]);
+  }
+}
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Restore session on mount
+  // Seed demo account and restore session on mount
   useEffect(() => {
+    seedDemoAccount();
     try {
       const stored = localStorage.getItem(STORAGE_KEY);
       if (stored) setUser(JSON.parse(stored));

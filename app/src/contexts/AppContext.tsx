@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useCallback } from 'react';
+import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
 import type {
   Child,
   Subject,
@@ -21,9 +21,9 @@ import {
   mockQuestionPaper,
   mockPracticeAttempts,
 } from '../data/mockData';
+import { useAuth, DEMO_USER_ID } from './AuthContext';
 
 interface AppState {
-  currentUser: { id: string; name: string; email: string };
   children: Child[];
   selectedChild: Child | null;
   subjects: Subject[];
@@ -57,33 +57,60 @@ interface AppContextValue extends AppState {
   getChildMaterials: (childId: string) => UploadedMaterial[];
   getChildWeeklyLessons: (childId: string) => WeeklyLesson[];
   getChildQuestionPapers: (childId: string) => GeneratedQuestionPaper[];
+  // Kept for backwards compatibility with any component that reads currentUser
+  currentUser: { id: string; name: string; email: string };
 }
 
 const AppContext = createContext<AppContextValue | null>(null);
 
+/** Return initial state seeded with demo data or a blank slate depending on userId */
+function buildInitialState(userId: string | null): AppState {
+  if (userId === DEMO_USER_ID) {
+    return {
+      children: mockChildren,
+      selectedChild: mockChildren[0],
+      subjects: mockSubjects,
+      chapters: mockChapters,
+      topics: mockTopics,
+      exams: mockExams,
+      materials: mockMaterials,
+      weeklyLessons: mockWeeklyLessons,
+      questionPapers: [mockQuestionPaper],
+      practiceAttempts: mockPracticeAttempts,
+    };
+  }
+  return {
+    children: [],
+    selectedChild: null,
+    subjects: [],
+    chapters: [],
+    topics: [],
+    exams: [],
+    materials: [],
+    weeklyLessons: [],
+    questionPapers: [],
+    practiceAttempts: [],
+  };
+}
+
 export function AppProvider({ children: reactChildren }: { children: React.ReactNode }) {
-  const [state, setState] = useState<AppState>({
-    currentUser: { id: 'user-1', name: 'Parent', email: 'parent@example.com' },
-    children: mockChildren,
-    selectedChild: mockChildren[0],
-    subjects: mockSubjects,
-    chapters: mockChapters,
-    topics: mockTopics,
-    exams: mockExams,
-    materials: mockMaterials,
-    weeklyLessons: mockWeeklyLessons,
-    questionPapers: [mockQuestionPaper],
-    practiceAttempts: mockPracticeAttempts,
-  });
+  const { user } = useAuth();
+  const [state, setState] = useState<AppState>(() => buildInitialState(user?.id ?? null));
+
+  // Re-initialise data whenever the logged-in user changes (login / logout / switch)
+  useEffect(() => {
+    setState(buildInitialState(user?.id ?? null));
+  }, [user?.id]);
 
   const selectChild = useCallback((child: Child) => {
     setState(s => ({ ...s, selectedChild: child }));
   }, []);
 
   const addChild = useCallback((childData: Omit<Child, 'id' | 'userId'>) => {
-    const newChild: Child = { ...childData, id: `child-${Date.now()}`, userId: 'user-1' };
+    const userId = user?.id ?? 'unknown';
+    const newChild: Child = { ...childData, id: `child-${Date.now()}`, userId };
     setState(s => ({ ...s, children: [...s.children, newChild], selectedChild: s.selectedChild || newChild }));
-  }, []);
+  }, [user?.id]);
 
   const updateChild = useCallback((id: string, updates: Partial<Child>) => {
     setState(s => ({
@@ -147,6 +174,7 @@ export function AppProvider({ children: reactChildren }: { children: React.React
 
   const value: AppContextValue = {
     ...state,
+    currentUser: { id: user?.id ?? '', name: user?.name ?? '', email: user?.email ?? '' },
     selectChild, addChild, updateChild, deleteChild,
     addMaterial, updateMaterial, deleteMaterial,
     addQuestionPaper, addExam, updateExam, deleteExam,
