@@ -2,17 +2,33 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/SchoolBuddy/icon.svg" />
+    <link rel="icon" type="image/svg+xml" href="/SanjuClass1/icon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="theme-color" content="#2563eb" />
     <meta name="description" content="AI-powered school learning assistant for parents" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
-    <meta name="apple-mobile-web-app-title" content="SchoolBuddy" />
-    <title>SchoolBuddy – AI Learning Assistant</title>
-    <script type="module" crossorigin src="/SchoolBuddy/assets/index-Dvo-5a0k.js"></script>
-    <link rel="stylesheet" crossorigin href="/SchoolBuddy/assets/index-vu_zOWBq.css">
-  <link rel="manifest" href="/SchoolBuddy/manifest.webmanifest"><script id="vite-plugin-pwa:register-sw" src="/SchoolBuddy/registerSW.js"></script></head>
+    <meta name="apple-mobile-web-app-title" content="School AI" />
+    <title>AI School Learning Assistant</title>
+    <script>
+      // GitHub Pages SPA redirect: restore path from ?p= query param
+      (function () {
+        var redirect = sessionStorage.redirect;
+        delete sessionStorage.redirect;
+        if (redirect && redirect !== location.href) {
+          history.replaceState(null, null, redirect);
+        }
+        // Also handle the ?p= trick from 404.html
+        var p = window.location.search.match(/[?&]p=([^&]+)/);
+        if (p) {
+          var path = decodeURIComponent(p[1].replace(/~and~/g, '&'));
+          window.history.replaceState(null, null, '/SanjuClass1' + path + (window.location.hash || ''));
+        }
+      })();
+    </script>
+    <script type="module" crossorigin src="/SanjuClass1/assets/index-w_30em-4.js"></script>
+    <link rel="stylesheet" crossorigin href="/SanjuClass1/assets/index-guyClQCx.css">
+  <link rel="manifest" href="/SanjuClass1/manifest.webmanifest"><script id="vite-plugin-pwa:register-sw" src="/SanjuClass1/registerSW.js"></script></head>
   <body>
     <div id="root"></div>
   </body>
