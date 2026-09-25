@@ -15,9 +15,10 @@ app.use(cors({
 }));
 app.use(express.json());
 
-app.use('/api', routes);
-
+app.get('/', (_, res) => res.json({ name: 'SchoolBuddy API', status: 'ok' }));
 app.get('/api/health', (_, res) => res.json({ status: 'ok' }));
+
+app.use('/api', routes);
 
 app.listen(PORT, () => {
   console.log(`SanjuClass1 backend running on http://localhost:${PORT}`);
