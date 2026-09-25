@@ -1,0 +1,20 @@
+services:
+  - type: web
+    name: sanjuclass1-backend
+    runtime: node
+    rootDir: backend
+    buildCommand: npm install
+    startCommand: npm start
+    plan: free
+
+    # Persist the SQLite database file across deploys
+    disk:
+      name: sanjuclass1-data
+      mountPath: /data
+      sizeGB: 1
+
+    envVars:
+      - key: PORT
+        value: 10000
+      - key: NODE_ENV
+        value: production

@@ -130,7 +130,7 @@ function AddExamModal({ open, onClose, childId, addExam }: {
   open: boolean;
   onClose: () => void;
   childId: string;
-  addExam: (exam: Exam) => void;
+  addExam: (exam: Exam) => void | Promise<void>;
 }) {
   const [form, setForm] = useState({
     name: '',

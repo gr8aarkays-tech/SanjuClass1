@@ -8,8 +8,24 @@
     <meta name="description" content="AI-powered school learning assistant for parents" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
-    <meta name="apple-mobile-web-app-title" content="SchoolBuddy" />
-    <title>SchoolBuddy – AI Learning Assistant</title>
+    <meta name="apple-mobile-web-app-title" content="School AI" />
+    <title>AI School Learning Assistant</title>
+    <script>
+      // GitHub Pages SPA redirect: restore path from ?p= query param
+      (function () {
+        var redirect = sessionStorage.redirect;
+        delete sessionStorage.redirect;
+        if (redirect && redirect !== location.href) {
+          history.replaceState(null, null, redirect);
+        }
+        // Also handle the ?p= trick from 404.html
+        var p = window.location.search.match(/[?&]p=([^&]+)/);
+        if (p) {
+          var path = decodeURIComponent(p[1].replace(/~and~/g, '&'));
+          window.history.replaceState(null, null, '/SanjuClass1' + path + (window.location.hash || ''));
+        }
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>
