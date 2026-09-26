@@ -1,16 +1,17 @@
 import React, { useState } from 'react';
-import { BookOpen, ChevronDown, ChevronRight, Lightbulb, Eye, Pencil, Dumbbell, Zap, Loader } from 'lucide-react';
+import { BookOpen, ChevronDown, ChevronRight, Lightbulb, Eye, Pencil, Dumbbell, Zap, Loader, FileText } from 'lucide-react';
 import { useApp } from '../contexts/AppContext';
 import { LoadingSpinner, StatusBadge, SectionHeader } from '../components/shared/UI';
-import { generateStudyGuide, type StudyGuideSection } from '../services/aiService';
+import { generateStudyGuide, buildStudyGuideFromText, type StudyGuideSection } from '../services/aiService';
 import { STUDY_STATUS_LABELS } from '../types';
 
 export function StudyGuide() {
-  const { selectedChild, getChildSubjects, getSubjectChapters, getChapterTopics, updateTopic } = useApp();
+  const { selectedChild, getChildSubjects, getSubjectChapters, getChapterTopics, updateTopic, getMaterialsForSubject } = useApp();
   const [selectedSubject, setSelectedSubject] = useState('');
   const [selectedChapter, setSelectedChapter] = useState('');
   const [guide, setGuide] = useState<StudyGuideSection | null>(null);
   const [loading, setLoading] = useState(false);
+  const [sourceNote, setSourceNote] = useState('');
   const [activeTab, setActiveTab] = useState<'read' | 'highlight' | 'understand' | 'practice' | 'revise'>('read');
   const [expandedTopics, setExpandedTopics] = useState<Set<string>>(new Set());
 
@@ -33,8 +34,17 @@ export function StudyGuide() {
     setLoading(true);
     setGuide(null);
     try {
-      const result = await generateStudyGuide(subject.name, chapter.name);
-      setGuide(result);
+      // Use uploaded material text if available (no AI needed)
+      const mats = getMaterialsForSubject(selectedChild!.id, subject.name);
+      if (mats.length > 0) {
+        const combinedText = mats.map(m => m.extractedText || '').join('\n\n');
+        setGuide(buildStudyGuideFromText(combinedText, subject.name, chapter.name));
+        setSourceNote(`From ${mats.length} uploaded material(s)`);
+      } else {
+        const result = await generateStudyGuide(subject.name, chapter.name);
+        setGuide(result);
+        setSourceNote('');
+      }
       setActiveTab('read');
     } finally {
       setLoading(false);
@@ -127,6 +137,11 @@ export function StudyGuide() {
             <h2 className="text-lg font-semibold text-gray-900">
               {currentSubject?.name} – {currentChapter?.name}
             </h2>
+            {sourceNote && (
+              <span className="ml-auto flex items-center gap-1 text-xs text-green-700 bg-green-50 border border-green-200 px-2 py-0.5 rounded-full">
+                <FileText className="w-3 h-3" /> {sourceNote}
+              </span>
+            )}
           </div>
 
           {/* Tabs */}

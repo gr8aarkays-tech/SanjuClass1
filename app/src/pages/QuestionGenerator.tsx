@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
-import { FileQuestion, Plus, Minus, Loader, Download, ChevronRight, ChevronLeft, Trash2 } from 'lucide-react';
+import { FileQuestion, Plus, Minus, Loader, Download, ChevronRight, ChevronLeft, Trash2, FileText } from 'lucide-react';
 import { useApp } from '../contexts/AppContext';
 import { LoadingSpinner, SectionHeader } from '../components/shared/UI';
-import { generateQuestionPaper } from '../services/aiService';
-import type { QuestionPaperConfig, QuestionType, QuestionTypeConfig, GeneratedQuestionPaper } from '../types';
+import { generateQuestionPaper, generateQuestionsFromText, type TextQuestion } from '../services/aiService';
+import type { QuestionPaperConfig, QuestionType, QuestionTypeConfig, GeneratedQuestionPaper, Question } from '../types';
 import { QUESTION_TYPE_LABELS } from '../types';
 
 const SUBJECTS = ['Mathematics', 'English', 'EVS', 'Science', 'Social Studies', 'Hindi', 'Kannada', 'Telugu'];
@@ -23,7 +23,7 @@ const ALL_QTYPES: QuestionType[] = [
 type Step = 1 | 2 | 3 | 4 | 5 | 6;
 
 export function QuestionGenerator() {
-  const { selectedChild, getChildSubjects, getSubjectChapters, addQuestionPaper, getChildQuestionPapers } = useApp();
+  const { selectedChild, getChildSubjects, getSubjectChapters, addQuestionPaper, getChildQuestionPapers, getMaterialsForSubject } = useApp();
   const [step, setStep] = useState<Step>(1);
   const [config, setConfig] = useState<Partial<QuestionPaperConfig>>({
     difficulty: 'mixed',
@@ -75,27 +75,54 @@ export function QuestionGenerator() {
     setGenerating(true);
     setGeneratedPaper(null);
     try {
-      const fullConfig: QuestionPaperConfig = {
-        childId: selectedChild.id,
-        subject: config.subject!,
-        sourceChapters: config.sourceChapters || [],
-        difficulty: config.difficulty || 'mixed',
-        questionTypes: config.questionTypes || [],
-        includeAnswers: config.includeAnswers ?? true,
-        includeExplanations: config.includeExplanations ?? true,
-        includeMarks: config.includeMarks ?? true,
-        randomize: config.randomize ?? false,
-        avoidDuplicates: config.avoidDuplicates ?? true,
-        useTextbookTerminology: config.useTextbookTerminology ?? true,
-        childFriendlyLanguage: config.childFriendlyLanguage ?? true,
-      };
-      const questions = await generateQuestionPaper(fullConfig);
+      const totalCount = (config.questionTypes || []).reduce((s, q) => s + q.quantity, 0);
+
+      // Use uploaded material text if available — no AI needed
+      const mats = getMaterialsForSubject(selectedChild.id, config.subject!);
+      let questions: Question[];
+
+      if (mats.length > 0) {
+        const combinedText = mats.map(m => m.extractedText || '').join('\n\n');
+        const textQuestions = generateQuestionsFromText(combinedText, totalCount);
+        let qIdx = 0;
+        questions = textQuestions.map((tq): Question => ({
+          id: `q-${++qIdx}`,
+          type: tq.type === 'fill_blank' ? 'fill_blanks' : tq.type === 'mcq' ? 'mcq' : tq.type === 'true_false' ? 'true_false' : 'short_answer',
+          question: tq.question,
+          options: tq.options,
+          answer: tq.answer,
+          marks: tq.marks,
+          topic: config.subject!,
+        }));
+      } else {
+        const fullConfig: QuestionPaperConfig = {
+          childId: selectedChild.id,
+          subject: config.subject!,
+          sourceChapters: config.sourceChapters || [],
+          difficulty: config.difficulty || 'mixed',
+          questionTypes: config.questionTypes || [],
+          includeAnswers: config.includeAnswers ?? true,
+          includeExplanations: config.includeExplanations ?? true,
+          includeMarks: config.includeMarks ?? true,
+          randomize: config.randomize ?? false,
+          avoidDuplicates: config.avoidDuplicates ?? true,
+          useTextbookTerminology: config.useTextbookTerminology ?? true,
+          childFriendlyLanguage: config.childFriendlyLanguage ?? true,
+        };
+        questions = await generateQuestionPaper(fullConfig);
+      }
+
       const paper: GeneratedQuestionPaper = {
         id: `qp-${Date.now()}`,
         childId: selectedChild.id,
         subjectId: selectedSubjectObj?.id || '',
-        title: `${config.subject} – Practice Paper`,
-        config: fullConfig,
+        title: `${config.subject} – Practice Paper${mats.length > 0 ? ' (from uploaded material)' : ''}`,
+        config: {
+          childId: selectedChild.id, subject: config.subject!, sourceChapters: config.sourceChapters || [],
+          difficulty: config.difficulty || 'mixed', questionTypes: config.questionTypes || [],
+          includeAnswers: true, includeExplanations: true, includeMarks: true,
+          randomize: false, avoidDuplicates: true, useTextbookTerminology: true, childFriendlyLanguage: true,
+        },
         questions,
         answerKey: questions.map(q => ({ questionId: q.id, answer: q.answer, explanation: q.explanation })),
         createdAt: new Date().toISOString(),

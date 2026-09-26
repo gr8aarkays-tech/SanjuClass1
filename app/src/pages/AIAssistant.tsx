@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Bot, Send, User, Loader, MessageCircle } from 'lucide-react';
 import { useApp } from '../contexts/AppContext';
-import { chatWithAssistant } from '../services/aiService';
+import { chatWithAssistant, answerFromMaterials } from '../services/aiService';
 
 interface Message {
   id: string;
@@ -19,7 +19,7 @@ const SUGGESTIONS = [
 ];
 
 export function AIAssistant() {
-  const { selectedChild } = useApp();
+  const { selectedChild, getChildMaterials } = useApp();
   const [messages, setMessages] = useState<Message[]>([
     {
       id: '0',
@@ -46,7 +46,12 @@ export function AIAssistant() {
     setLoading(true);
 
     try {
-      const response = await chatWithAssistant(msg, selectedChild?.name || 'your child');
+      // Search through all uploaded material text first (no AI needed)
+      const allMaterials = selectedChild ? getChildMaterials(selectedChild.id) : [];
+      const allText = allMaterials.map(m => m.extractedText || '').filter(Boolean).join('\n\n');
+      const response = allText
+        ? answerFromMaterials(msg, allText, selectedChild?.name || 'your child')
+        : await chatWithAssistant(msg, selectedChild?.name || 'your child');
       const assistantMsg: Message = { id: (Date.now() + 1).toString(), role: 'assistant', text: response, time: new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }) };
       setMessages(m => [...m, assistantMsg]);
     } finally {

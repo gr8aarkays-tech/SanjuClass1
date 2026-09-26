@@ -599,6 +599,191 @@ export async function chatWithAssistant(message: string, childName: string): Pro
   return `I'm your AI learning assistant for ${childName}. I can help you understand what to study, generate practice questions, explain concepts, or create a revision plan. What would you like help with?`;
 }
 
+// ─── Text-based Study Guide (no AI) ──────────────────────────────────────────
+// Parses raw OCR/extracted text into a StudyGuideSection without any AI call.
+
+export function buildStudyGuideFromText(text: string, subject: string, chapterName: string): StudyGuideSection {
+  const lines = text
+    .split('\n')
+    .map(l => l.replace(/\s+/g, ' ').trim())
+    .filter(l => l.length > 4);
+
+  // Sentences: lines that look like real sentences (contain a space and end with punctuation or are long)
+  const sentences = lines.filter(l => l.includes(' ') && l.length > 15);
+
+  // Key terms: short capitalised tokens or tokens followed by a colon / dash
+  const termPattern = /^([A-Z][A-Za-z\s]{2,30})[\s:–-]/;
+  const keyTerms: string[] = [];
+  const seenTerms = new Set<string>();
+  for (const line of lines) {
+    const m = line.match(termPattern);
+    if (m && !seenTerms.has(m[1])) {
+      keyTerms.push(m[1].trim());
+      seenTerms.add(m[1].trim());
+    }
+  }
+
+  // Important points: numbered or bulleted lines
+  const pointPattern = /^[\d\u2022\-\*•]\s*[\.\):]?\s*(.+)/;
+  const importantPoints: string[] = [];
+  for (const line of lines) {
+    const m = line.match(pointPattern);
+    if (m && m[1].length > 8 && importantPoints.length < 10) {
+      importantPoints.push(m[1].trim());
+    }
+  }
+
+  // Definitions: lines containing " is ", " are ", " means ", " refers to "
+  const defPattern = /\b(is|are|means|refers to|defined as)\b/i;
+  const definitions: string[] = sentences.filter(s => defPattern.test(s)).slice(0, 5);
+
+  // What to read: first few meaningful sentences as reading pointers
+  const whatToRead = sentences.slice(0, 6).length
+    ? sentences.slice(0, 6)
+    : [`Read the complete material on ${chapterName}`, `Review all key terms in ${subject}`];
+
+  // What to highlight: key terms + definitions
+  const whatToHighlight = [
+    ...keyTerms.slice(0, 4).map(t => ({ item: t, reason: `Key term in ${subject}`, memorize: true })),
+    ...definitions.slice(0, 3).map(d => ({ item: d.slice(0, 80) + (d.length > 80 ? '…' : ''), reason: 'Definition — often asked in exams', memorize: true })),
+  ];
+
+  // What to understand: definitions turned into concept cards
+  const whatToUnderstand = definitions.slice(0, 3).map(def => {
+    const parts = def.split(/\b(is|are|means|refers to|defined as)\b/i);
+    return {
+      concept: parts[0]?.trim() || chapterName,
+      explanation: def,
+      example: `Refer to textbook examples for ${parts[0]?.trim() || chapterName}`,
+      commonMistakes: ['Read the full sentence carefully before answering'],
+    };
+  });
+  if (whatToUnderstand.length === 0) {
+    whatToUnderstand.push({
+      concept: chapterName,
+      explanation: sentences[0] || `Study ${chapterName} from the uploaded material.`,
+      example: `Refer to textbook examples`,
+      commonMistakes: ['Do not skip diagrams or tables in the material'],
+    });
+  }
+
+  // What to practice
+  const whatToPractice = [
+    `Write answers for all numbered questions found in the material`,
+    `Make your own notes listing key points from the uploaded document`,
+    ...(keyTerms.slice(0, 3).map(t => `Write the definition of: ${t}`)),
+    `Revise ${chapterName} using the extracted text above`,
+  ];
+
+  return {
+    whatToRead,
+    whatToHighlight,
+    whatToUnderstand,
+    whatToPractice,
+    quickRevision: {
+      keyPoints: importantPoints.length ? importantPoints.slice(0, 6) : sentences.slice(0, 4),
+      importantWords: keyTerms.slice(0, 8),
+      oralQuestions: [
+        `What is ${chapterName}?`,
+        ...keyTerms.slice(0, 3).map(t => `Explain: ${t}`),
+        `Write 3 important points from ${subject} – ${chapterName}`,
+      ],
+    },
+  };
+}
+
+// ─── Question generation from raw text (no AI) ───────────────────────────────
+
+export interface TextQuestion {
+  type: 'fill_blank' | 'mcq' | 'short_answer' | 'true_false';
+  question: string;
+  answer: string;
+  options?: string[];
+  marks: number;
+}
+
+export function generateQuestionsFromText(text: string, count = 10): TextQuestion[] {
+  const lines = text
+    .split('\n')
+    .map(l => l.replace(/\s+/g, ' ').trim())
+    .filter(l => l.length > 15 && l.includes(' '));
+
+  const questions: TextQuestion[] = [];
+
+  // Fill in the blanks — pick sentences with a clear noun/term and blank it
+  const defLines = lines.filter(l => /\b(is|are|means|called|known as|defined as)\b/i.test(l));
+  for (const line of defLines.slice(0, Math.ceil(count * 0.4))) {
+    // Blank out the last meaningful word before "is/are/means"
+    const blanked = line.replace(/\b([A-Z][a-z]{2,})\b/, '______');
+    const match = line.match(/\b([A-Z][a-z]{2,})\b/);
+    if (match && blanked !== line) {
+      questions.push({ type: 'fill_blank', question: `Fill in the blank:\n${blanked}`, answer: match[1], marks: 1 });
+    }
+  }
+
+  // True/False — take a factual sentence as-is (true), then negate a keyword (false)
+  const factLines = lines.filter(l => l.length > 20 && l.length < 120 && /[A-Z]/.test(l[0]));
+  for (const line of factLines.slice(0, Math.ceil(count * 0.2))) {
+    questions.push({ type: 'true_false', question: `True or False:\n"${line}"`, answer: 'True', marks: 1 });
+  }
+
+  // Short answer — numbered/bulleted points become short-answer questions
+  const pointLines = lines.filter(l => /^[\d\u2022\-•]/.test(l));
+  for (const line of pointLines.slice(0, Math.ceil(count * 0.3))) {
+    const clean = line.replace(/^[\d\u2022\-•\.\)]\s*/, '');
+    if (clean.length > 10) {
+      questions.push({ type: 'short_answer', question: `Answer in one or two sentences:\n${clean}`, answer: clean, marks: 2 });
+    }
+  }
+
+  // MCQ — take key terms as correct answer, generate plausible distractors from other key terms
+  const keyTerms = lines
+    .map(l => l.match(/^([A-Z][A-Za-z\s]{2,20})[\s:–-]/)?.[1]?.trim())
+    .filter(Boolean) as string[];
+  const uniqueTerms = [...new Set(keyTerms)];
+  for (let i = 0; i < uniqueTerms.length && questions.length < count; i++) {
+    const correct = uniqueTerms[i];
+    const distractors = uniqueTerms.filter(t => t !== correct).slice(0, 3);
+    if (distractors.length < 3) continue;
+    const opts = [correct, ...distractors].sort(() => Math.random() - 0.5);
+    questions.push({
+      type: 'mcq',
+      question: `Which of the following is a key term from the uploaded material?`,
+      answer: correct,
+      options: opts,
+      marks: 1,
+    });
+  }
+
+  return questions.slice(0, count);
+}
+
+// ─── Text-based chat assistant (no AI) ───────────────────────────────────────
+// Searches uploaded material text for answers to the user's question.
+
+export function answerFromMaterials(question: string, materialsText: string, childName: string): string {
+  if (!materialsText.trim()) {
+    return `I don't have any uploaded material to search through for ${childName} yet. Please upload a PDF or image first, then I can answer questions based on it.`;
+  }
+
+  const q = question.toLowerCase();
+  const lines = materialsText.split('\n').map(l => l.trim()).filter(l => l.length > 5);
+
+  // Find lines that contain keywords from the question
+  const keywords = q.split(/\s+/).filter(w => w.length > 3 && !['what','when','where','which','does','have','will','this','that','from','with','your','child'].includes(w));
+  const relevant = lines.filter(line => keywords.some(kw => line.toLowerCase().includes(kw)));
+
+  if (relevant.length > 0) {
+    const answer = relevant.slice(0, 5).join('\n');
+    return `Based on the uploaded material for ${childName}:\n\n${answer}\n\n(Found in uploaded documents — check the original material for full context.)`;
+  }
+
+  // Fallback: return the first few lines of material as context
+  return `I couldn't find an exact match in the uploaded material, but here is relevant content from ${childName}'s documents:\n\n${lines.slice(0, 5).join('\n')}`;
+}
+
+
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function delay(ms: number): Promise<void> {

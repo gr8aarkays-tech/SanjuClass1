@@ -64,6 +64,7 @@ interface AppContextValue extends AppState {
   getChapterTopics: (chapterId: string) => Topic[];
   getChildExams: (childId: string) => Exam[];
   getChildMaterials: (childId: string) => UploadedMaterial[];
+  getMaterialsForSubject: (childId: string, subject: string) => UploadedMaterial[];
   getChildWeeklyLessons: (childId: string) => WeeklyLesson[];
   getChildQuestionPapers: (childId: string) => GeneratedQuestionPaper[];
   // Kept for backwards compatibility
@@ -327,6 +328,10 @@ export function AppProvider({ children: reactChildren }: { children: React.React
   const getChapterTopics = useCallback((chapterId: string) => state.topics.filter(t => t.chapterId === chapterId), [state.topics]);
   const getChildExams = useCallback((childId: string) => state.exams.filter(e => e.childId === childId), [state.exams]);
   const getChildMaterials = useCallback((childId: string) => state.materials.filter(m => m.childId === childId), [state.materials]);
+  const getMaterialsForSubject = useCallback((childId: string, subject: string) =>
+    state.materials.filter(m => m.childId === childId && m.extractedText &&
+      (m.subject.toLowerCase() === subject.toLowerCase() || m.subject === 'All Subjects')),
+  [state.materials]);
   const getChildWeeklyLessons = useCallback((childId: string) => state.weeklyLessons.filter(l => l.childId === childId), [state.weeklyLessons]);
   const getChildQuestionPapers = useCallback((childId: string) => state.questionPapers.filter(p => p.childId === childId), [state.questionPapers]);
 
@@ -339,7 +344,7 @@ export function AppProvider({ children: reactChildren }: { children: React.React
     updateTopic, addPracticeAttempt,
     upsertSubject, upsertChapter, upsertTopic,
     getChildSubjects, getSubjectChapters, getChapterTopics,
-    getChildExams, getChildMaterials, getChildWeeklyLessons, getChildQuestionPapers,
+    getChildExams, getChildMaterials, getMaterialsForSubject, getChildWeeklyLessons, getChildQuestionPapers,
   };
 
   return <AppContext.Provider value={value}>{reactChildren}</AppContext.Provider>;
