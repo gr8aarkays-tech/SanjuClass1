@@ -2,7 +2,8 @@
  * AI Service — handles text extraction and AI-powered content analysis.
  *
  * Extraction:
- *   - PDF  → pdfjs-dist (runs entirely in the browser)
+ *   - PDF (selectable text) → pdfjs-dist (runs entirely in the browser)
+ *   - PDF (scanned/image)   → pdfjs-dist renders pages → Tesseract.js OCR (free, no API key)
  *   - Image → base64-encoded and sent to the AI vision API (no local OCR)
  *   - Link  → fetched via a CORS proxy (allOrigins), then text stripped from HTML
  *
@@ -53,44 +54,32 @@ export async function extractTextFromPdf(file: File): Promise<string> {
   const fullText = pageTexts.join('\n\n');
   if (fullText.trim()) return fullText;
 
-  // ── Scanned PDF fallback: render each page to canvas and run vision OCR ──
-  if (PROVIDER === 'mock') {
-    await delay(1500);
-    return 'Sample extracted text from scanned PDF (mock OCR).';
-  }
-  if (PROVIDER !== 'openai' && PROVIDER !== 'anthropic') {
-    throw new Error(
-      `No selectable text found in this PDF (scanned document). ` +
-      `OCR via vision API is not supported for provider "${PROVIDER}". Use openai or anthropic.`,
-    );
-  }
+  // ── Scanned PDF fallback: render pages to canvas → Tesseract.js OCR ─────
+  // Tesseract.js runs entirely in the browser — no API key required.
+  const { createWorker } = await import('tesseract.js');
+  const worker = await createWorker('eng');
 
-  const ocrPrompt =
-    'This is a page from a scanned school document. ' +
-    'Extract ALL text exactly as written, preserving headings, bullet points, and numbered lists. ' +
-    'Return only the extracted text — no commentary.';
-
-  const ocrTexts: string[] = [];
-  for (let i = 1; i <= pdf.numPages; i++) {
-    const page = await pdf.getPage(i);
-    const viewport = page.getViewport({ scale: 2.0 });
-    const canvas = document.createElement('canvas');
-    canvas.width = viewport.width;
-    canvas.height = viewport.height;
-    const ctx = canvas.getContext('2d')!;
-    await page.render({ canvasContext: ctx, viewport, canvas } as any).promise;
-    const base64 = canvas.toDataURL('image/png').split(',')[1];
-    const pageOcr = PROVIDER === 'openai'
-      ? await callOpenAIVision(base64, 'image/png', ocrPrompt)
-      : await callAnthropicVision(base64, 'image/png', ocrPrompt);
-    if (pageOcr.trim()) ocrTexts.push(pageOcr.trim());
+  try {
+    const ocrTexts: string[] = [];
+    for (let i = 1; i <= pdf.numPages; i++) {
+      const page = await pdf.getPage(i);
+      const viewport = page.getViewport({ scale: 2.0 }); // 2× scale = better OCR accuracy
+      const canvas = document.createElement('canvas');
+      canvas.width = viewport.width;
+      canvas.height = viewport.height;
+      const ctx = canvas.getContext('2d')!;
+      await page.render({ canvasContext: ctx, viewport, canvas } as any).promise;
+      const { data: { text } } = await worker.recognize(canvas);
+      if (text.trim()) ocrTexts.push(text.trim());
+    }
+    const ocrFull = ocrTexts.join('\n\n');
+    if (!ocrFull.trim()) {
+      throw new Error('Could not extract any text from this PDF. The document may be blank or unreadable.');
+    }
+    return ocrFull;
+  } finally {
+    await worker.terminate();
   }
-
-  const ocrFull = ocrTexts.join('\n\n');
-  if (!ocrFull.trim()) {
-    throw new Error('Could not extract any text from this PDF even after OCR. The document may be blank or unreadable.');
-  }
-  return ocrFull;
 }
 
 // ─── Image extraction ─────────────────────────────────────────────────────────

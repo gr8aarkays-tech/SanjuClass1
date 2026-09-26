@@ -88,7 +88,7 @@ export function UploadMaterials() {
       if (fileType === 'image' && selectedFile) {
         rawText = await extractTextFromImage(selectedFile);
       } else if (fileType === 'pdf' && selectedFile) {
-        setProcessingStatus('Extracting text from PDF…');
+        setProcessingStatus('Extracting text from PDF… (scanned pages may take a moment)');
         rawText = await extractTextFromPdf(selectedFile);
       } else if (fileType === 'link') {
         rawText = await extractContentFromUrl(linkUrl);
