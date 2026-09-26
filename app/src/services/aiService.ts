@@ -51,12 +51,46 @@ export async function extractTextFromPdf(file: File): Promise<string> {
   }
 
   const fullText = pageTexts.join('\n\n');
-  if (!fullText.trim()) {
+  if (fullText.trim()) return fullText;
+
+  // ── Scanned PDF fallback: render each page to canvas and run vision OCR ──
+  if (PROVIDER === 'mock') {
+    await delay(1500);
+    return 'Sample extracted text from scanned PDF (mock OCR).';
+  }
+  if (PROVIDER !== 'openai' && PROVIDER !== 'anthropic') {
     throw new Error(
-      'No selectable text found in this PDF. It may be a scanned document — please upload it as an image instead.',
+      `No selectable text found in this PDF (scanned document). ` +
+      `OCR via vision API is not supported for provider "${PROVIDER}". Use openai or anthropic.`,
     );
   }
-  return fullText;
+
+  const ocrPrompt =
+    'This is a page from a scanned school document. ' +
+    'Extract ALL text exactly as written, preserving headings, bullet points, and numbered lists. ' +
+    'Return only the extracted text — no commentary.';
+
+  const ocrTexts: string[] = [];
+  for (let i = 1; i <= pdf.numPages; i++) {
+    const page = await pdf.getPage(i);
+    const viewport = page.getViewport({ scale: 2.0 });
+    const canvas = document.createElement('canvas');
+    canvas.width = viewport.width;
+    canvas.height = viewport.height;
+    const ctx = canvas.getContext('2d')!;
+    await page.render({ canvasContext: ctx, viewport }).promise;
+    const base64 = canvas.toDataURL('image/png').split(',')[1];
+    const pageOcr = PROVIDER === 'openai'
+      ? await callOpenAIVision(base64, 'image/png', ocrPrompt)
+      : await callAnthropicVision(base64, 'image/png', ocrPrompt);
+    if (pageOcr.trim()) ocrTexts.push(pageOcr.trim());
+  }
+
+  const ocrFull = ocrTexts.join('\n\n');
+  if (!ocrFull.trim()) {
+    throw new Error('Could not extract any text from this PDF even after OCR. The document may be blank or unreadable.');
+  }
+  return ocrFull;
 }
 
 // ─── Image extraction ─────────────────────────────────────────────────────────
