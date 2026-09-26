@@ -5,12 +5,9 @@ import { mkdirSync, existsSync } from 'fs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
-// On Render.com, use the writable tmp directory (free tier has no persistent disk)
-// Set DATA_DIR env var to override (e.g. a mounted disk path on paid plans)
-const DATA_DIR = process.env.DATA_DIR
-  ?? (process.env.NODE_ENV === 'production'
-    ? '/opt/render/project/src/backend/data'
-    : join(__dirname, '..', 'data'));
+// Always store the DB relative to this file — works on Render free tier and locally
+// Override with DATA_DIR env var if needed (e.g. a mounted persistent disk)
+const DATA_DIR = process.env.DATA_DIR ?? join(__dirname, '..', 'data');
 const DB_PATH = join(DATA_DIR, 'sanjuclass1.db');
 
 if (!existsSync(DATA_DIR)) {
