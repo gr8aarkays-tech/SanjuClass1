@@ -1,11 +1,12 @@
-services:
+﻿services:
   - type: web
     name: schoolbuddy-backend
     runtime: node
     rootDir: backend
-    buildCommand: npm install
-    startCommand: npm start
+    buildCommand: npm ci
+    startCommand: node src/index.js
     plan: free
+    nodeVersion: 20.x
 
     envVars:
       - key: PORT
