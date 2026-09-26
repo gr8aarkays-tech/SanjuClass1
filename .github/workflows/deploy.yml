@@ -31,14 +31,13 @@ jobs:
         run: npm run build
         working-directory: app
         env:
-          # Set this secret in: GitHub repo → Settings → Secrets → Actions
-          # Value: https://your-app-name.onrender.com  (no trailing slash)
-          VITE_API_URL: ${{ secrets.VITE_API_URL }}
+          # Backend deployed on Render.com - no trailing slash
+          # Override by setting VITE_API_URL in GitHub repo Secrets
+          VITE_API_URL: https://schoolbuddy-d5vk.onrender.com
 
       - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@v4
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: app/dist
-          # Enables client-side routing (React Router) on GitHub Pages
           enable_jekyll: false
