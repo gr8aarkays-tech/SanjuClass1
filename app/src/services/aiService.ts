@@ -14,6 +14,7 @@
  *   - mock     → deterministic fake responses (default, no key needed)
  */
 
+import { createWorker } from 'tesseract.js';
 import type { ExtractedContent, QuestionPaperConfig, Question, QuestionType } from '../types';
 
 const PROVIDER = (import.meta.env.VITE_AI_PROVIDER || 'mock') as 'mock' | 'openai' | 'anthropic' | 'watsonx';
@@ -56,7 +57,6 @@ export async function extractTextFromPdf(file: File): Promise<string> {
 
   // ── Scanned PDF fallback: render pages to canvas → Tesseract.js OCR ─────
   // Tesseract.js runs entirely in the browser — no API key required.
-  const { createWorker } = await import('tesseract.js');
   const worker = await createWorker('eng');
 
   try {

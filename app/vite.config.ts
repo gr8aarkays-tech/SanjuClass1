@@ -32,7 +32,14 @@ export default defineConfig({
       },
       workbox: {
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
+        // Use NetworkFirst for JS/CSS so new deployments are never blocked by
+        // stale cached chunks (avoids "error loading dynamically imported module").
         runtimeCaching: [
+          {
+            urlPattern: /\.(?:js|css)$/i,
+            handler: 'NetworkFirst',
+            options: { cacheName: 'assets-cache', networkTimeoutSeconds: 10 },
+          },
           {
             urlPattern: /^https:\/\/fonts\.googleapis\.com\/.*/i,
             handler: 'CacheFirst',
