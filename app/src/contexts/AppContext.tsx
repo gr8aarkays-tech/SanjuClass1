@@ -10,6 +10,7 @@ import type {
   GeneratedQuestionPaper,
   PracticeAttempt,
 } from '../types';
+import { SUBJECT_COLORS } from '../types';
 import { useAuth, DEMO_USER_ID } from './AuthContext';
 import { api } from '../services/apiService';
 import {
@@ -52,6 +53,12 @@ interface AppContextValue extends AppState {
   deleteExam: (id: string) => Promise<void>;
   updateTopic: (id: string, updates: Partial<Topic>) => Promise<void>;
   addPracticeAttempt: (attempt: PracticeAttempt) => Promise<void>;
+  /** Upsert a subject for a child — creates it if it doesn't exist yet, returns its id */
+  upsertSubject: (childId: string, name: string) => string;
+  /** Upsert a chapter under a subject — creates it if it doesn't exist yet, returns its id */
+  upsertChapter: (subjectId: string, name: string) => string;
+  /** Upsert a topic under a chapter — creates it if it doesn't exist yet */
+  upsertTopic: (chapterId: string, name: string) => void;
   getChildSubjects: (childId: string) => Subject[];
   getSubjectChapters: (subjectId: string) => Chapter[];
   getChapterTopics: (chapterId: string) => Topic[];
@@ -257,6 +264,62 @@ export function AppProvider({ children: reactChildren }: { children: React.React
     }
   }, [isDemo]);
 
+  // ─── Upsert helpers — used after material processing to seed the curriculum ─
+
+  const upsertSubject = useCallback((childId: string, name: string): string => {
+    let resultId = '';
+    setState(s => {
+      const existing = s.subjects.find(
+        sub => sub.childId === childId && sub.name.toLowerCase() === name.toLowerCase(),
+      );
+      if (existing) { resultId = existing.id; return s; }
+      const newSubject: Subject = {
+        id: `sub-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+        childId,
+        name,
+        color: SUBJECT_COLORS[name] || 'bg-gray-500',
+      };
+      resultId = newSubject.id;
+      return { ...s, subjects: [...s.subjects, newSubject] };
+    });
+    return resultId;
+  }, []);
+
+  const upsertChapter = useCallback((subjectId: string, name: string): string => {
+    let resultId = '';
+    setState(s => {
+      const existing = s.chapters.find(
+        ch => ch.subjectId === subjectId && ch.name.toLowerCase() === name.toLowerCase(),
+      );
+      if (existing) { resultId = existing.id; return s; }
+      const newChapter: Chapter = {
+        id: `ch-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+        subjectId,
+        name,
+      };
+      resultId = newChapter.id;
+      return { ...s, chapters: [...s.chapters, newChapter] };
+    });
+    return resultId;
+  }, []);
+
+  const upsertTopic = useCallback((chapterId: string, name: string): void => {
+    setState(s => {
+      const existing = s.topics.find(
+        t => t.chapterId === chapterId && t.name.toLowerCase() === name.toLowerCase(),
+      );
+      if (existing) return s;
+      const newTopic: Topic = {
+        id: `top-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+        chapterId,
+        name,
+        importance: 'medium',
+        studyStatus: 'not_started',
+      };
+      return { ...s, topics: [...s.topics, newTopic] };
+    });
+  }, []);
+
   // ─── Derived getters ──────────────────────────────────────────────────────
 
   const getChildSubjects = useCallback((childId: string) => state.subjects.filter(s => s.childId === childId), [state.subjects]);
@@ -274,6 +337,7 @@ export function AppProvider({ children: reactChildren }: { children: React.React
     addMaterial, updateMaterial, deleteMaterial,
     addQuestionPaper, addExam, updateExam, deleteExam,
     updateTopic, addPracticeAttempt,
+    upsertSubject, upsertChapter, upsertTopic,
     getChildSubjects, getSubjectChapters, getChapterTopics,
     getChildExams, getChildMaterials, getChildWeeklyLessons, getChildQuestionPapers,
   };

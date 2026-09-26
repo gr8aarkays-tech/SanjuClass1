@@ -1,50 +1,340 @@
 /**
- * Mock AI Service — simulates AI responses for local development.
- * Replace with real AI provider calls (OpenAI / watsonx.ai / Anthropic) by
- * setting VITE_AI_PROVIDER and VITE_AI_API_KEY in .env.
+ * AI Service — handles text extraction and AI-powered content analysis.
+ *
+ * Extraction:
+ *   - PDF  → pdfjs-dist (runs entirely in the browser)
+ *   - Image → base64-encoded and sent to the AI vision API (no local OCR)
+ *   - Link  → fetched via a CORS proxy (allOrigins), then text stripped from HTML
+ *
+ * AI Analysis:
+ *   - openai   → gpt-4o-mini  (set VITE_AI_PROVIDER=openai  + VITE_AI_API_KEY)
+ *   - anthropic → claude-3-haiku (set VITE_AI_PROVIDER=anthropic + VITE_AI_API_KEY)
+ *   - watsonx  → requires VITE_WATSONX_URL + VITE_WATSONX_TOKEN + VITE_WATSONX_MODEL
+ *   - mock     → deterministic fake responses (default, no key needed)
  */
 
 import type { ExtractedContent, QuestionPaperConfig, Question, QuestionType } from '../types';
 
-const PROVIDER = import.meta.env.VITE_AI_PROVIDER || 'mock';
+const PROVIDER = (import.meta.env.VITE_AI_PROVIDER || 'mock') as 'mock' | 'openai' | 'anthropic' | 'watsonx';
+const API_KEY  = import.meta.env.VITE_AI_API_KEY || '';
 
-// ─── OCR / Text Extraction ────────────────────────────────────────────────────
+// ─── PDF extraction (pdfjs-dist) ─────────────────────────────────────────────
 
-export async function extractTextFromImage(_file: File): Promise<string> {
-  if (PROVIDER !== 'mock') {
-    // TODO: call real OCR provider (e.g. Tesseract.js, Google Vision, etc.)
-    throw new Error('OCR provider not configured');
+async function getPdfJs() {
+  // Dynamic import keeps pdfjs-dist out of the initial bundle
+  const pdfjsLib = await import('pdfjs-dist');
+  // Point the worker at the bundled worker file served from node_modules
+  if (!pdfjsLib.GlobalWorkerOptions.workerSrc) {
+    pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
+      'pdfjs-dist/build/pdf.worker.mjs',
+      import.meta.url,
+    ).toString();
   }
-  // Simulate processing delay
-  await delay(1500);
-  return 'Sample extracted text from image.\nSubject: Mathematics\nTopic: Multiplication – 6× and 7× tables\nHomework: Complete worksheet page 47';
+  return pdfjsLib;
 }
 
-export async function extractTextFromPdf(_file: File): Promise<string> {
-  if (PROVIDER !== 'mock') {
-    throw new Error('PDF extraction provider not configured');
+export async function extractTextFromPdf(file: File): Promise<string> {
+  const pdfjsLib = await getPdfJs();
+  const arrayBuffer = await file.arrayBuffer();
+  const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+
+  const pageTexts: string[] = [];
+  for (let i = 1; i <= pdf.numPages; i++) {
+    const page = await pdf.getPage(i);
+    const content = await page.getTextContent();
+    const pageText = content.items
+      .map((item: any) => ('str' in item ? item.str : ''))
+      .join(' ')
+      .replace(/\s{2,}/g, '\n')
+      .trim();
+    if (pageText) pageTexts.push(pageText);
   }
-  await delay(2000);
-  return 'Sample extracted text from PDF.\nExamination Syllabus – October 2024\nMathematics: Chapters 1-3\nEnglish: Chapters 1-2\nEVS: Chapter 1';
+
+  const fullText = pageTexts.join('\n\n');
+  if (!fullText.trim()) {
+    throw new Error(
+      'No selectable text found in this PDF. It may be a scanned document — please upload it as an image instead.',
+    );
+  }
+  return fullText;
 }
 
-export async function extractContentFromUrl(_url: string): Promise<string> {
-  if (PROVIDER !== 'mock') {
-    throw new Error('URL extraction not configured');
-  }
-  await delay(1000);
-  return 'Sample educational content extracted from URL.';
+// ─── Image extraction ─────────────────────────────────────────────────────────
+// Images are sent to the AI vision API as base64. No local OCR needed.
+
+async function fileToBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve((reader.result as string).split(',')[1]);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
 }
 
-// ─── AI Content Analysis ──────────────────────────────────────────────────────
+export async function extractTextFromImage(file: File): Promise<string> {
+  if (PROVIDER === 'mock') {
+    await delay(1500);
+    return [
+      'Sample extracted text from image.',
+      'Subject: Mathematics',
+      'Topic: Multiplication – 6× and 7× tables',
+      'Homework: Complete worksheet page 47',
+    ].join('\n');
+  }
+
+  const base64 = await fileToBase64(file);
+  const mimeType = file.type || 'image/jpeg';
+
+  const prompt =
+    'Extract ALL text from this image exactly as written. ' +
+    'Preserve headings, bullet points, and numbered lists. ' +
+    'Return only the extracted text — no commentary.';
+
+  if (PROVIDER === 'openai') {
+    return callOpenAIVision(base64, mimeType, prompt);
+  }
+  if (PROVIDER === 'anthropic') {
+    return callAnthropicVision(base64, mimeType, prompt);
+  }
+  throw new Error(`Image extraction is not supported for provider "${PROVIDER}". Use openai or anthropic.`);
+}
+
+// ─── URL / link extraction ────────────────────────────────────────────────────
+
+export async function extractContentFromUrl(url: string): Promise<string> {
+  if (PROVIDER === 'mock') {
+    await delay(1000);
+    return 'Sample educational content extracted from URL.';
+  }
+
+  // Use allorigins CORS proxy to fetch arbitrary URLs from the browser
+  const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`;
+  const res = await fetch(proxyUrl);
+  if (!res.ok) throw new Error(`Could not fetch URL (HTTP ${res.status}). Check the URL and try again.`);
+  const json = await res.json();
+  const html: string = json.contents ?? '';
+
+  // Strip HTML tags, collapse whitespace
+  const text = html
+    .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
+    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/\s{3,}/g, '\n\n')
+    .trim();
+
+  if (!text) throw new Error('No readable text could be extracted from this URL.');
+  // Truncate to ~8000 chars to stay within token limits
+  return text.slice(0, 8000);
+}
+
+// ─── AI content analysis ──────────────────────────────────────────────────────
+
+const ANALYSIS_PROMPT = `You are an AI assistant helping Indian school parents track their child's learning materials.
+
+Analyze the text below (from a lesson plan, exam syllabus, classroom notes, or homework) and return ONLY valid JSON — no markdown fences, no commentary.
+
+Required JSON shape:
+{
+  "subjects": ["string"],          // e.g. ["Mathematics", "EVS"]
+  "chapters": ["string"],          // chapter names found in the text
+  "topics": ["string"],            // specific topics within chapters
+  "definitions": ["string"],       // key definitions (if any)
+  "importantPoints": ["string"],   // bullet-style key points to remember
+  "homework": "string or null",    // homework task if mentioned
+  "examName": "string or null",    // exam name if mentioned
+  "confidenceScore": 0.0–1.0,     // how confident you are in the extraction
+  "needsReview": true|false        // true if content is ambiguous or low quality
+}
+
+TEXT TO ANALYZE:
+`;
 
 export async function analyzeExtractedText(text: string): Promise<ExtractedContent> {
-  if (PROVIDER !== 'mock') {
-    throw new Error('AI provider not configured');
+  if (PROVIDER === 'mock') {
+    await delay(2000);
+    return mockAnalyze(text);
   }
-  await delay(2000);
 
-  // Very simple mock parser — in production, send to LLM
+  let raw: string;
+  if (PROVIDER === 'openai')    raw = await callOpenAIChat(ANALYSIS_PROMPT + text);
+  else if (PROVIDER === 'anthropic') raw = await callAnthropicChat(ANALYSIS_PROMPT + text);
+  else if (PROVIDER === 'watsonx')   raw = await callWatsonxChat(ANALYSIS_PROMPT + text);
+  else throw new Error(`Unknown AI provider: ${PROVIDER}`);
+
+  return parseAnalysisResponse(raw);
+}
+
+function parseAnalysisResponse(raw: string): ExtractedContent {
+  // Strip markdown code fences if the model added them despite instructions
+  const cleaned = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim();
+  try {
+    const parsed = JSON.parse(cleaned);
+    return {
+      subjects:        Array.isArray(parsed.subjects)        ? parsed.subjects        : [],
+      chapters:        Array.isArray(parsed.chapters)        ? parsed.chapters        : [],
+      topics:          Array.isArray(parsed.topics)          ? parsed.topics          : [],
+      definitions:     Array.isArray(parsed.definitions)     ? parsed.definitions     : [],
+      importantPoints: Array.isArray(parsed.importantPoints) ? parsed.importantPoints : [],
+      homework:        parsed.homework   || undefined,
+      examName:        parsed.examName   || undefined,
+      confidenceScore: typeof parsed.confidenceScore === 'number' ? parsed.confidenceScore : 0.5,
+      needsReview:     Boolean(parsed.needsReview),
+    };
+  } catch {
+    // Fallback if the model returns malformed JSON
+    return {
+      subjects: [], chapters: [], topics: [], definitions: [],
+      importantPoints: ['Review uploaded material carefully'],
+      confidenceScore: 0.3,
+      needsReview: true,
+    };
+  }
+}
+
+// ─── OpenAI ───────────────────────────────────────────────────────────────────
+
+async function callOpenAIChat(prompt: string): Promise<string> {
+  const res = await fetch('https://api.openai.com/v1/chat/completions', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${API_KEY}` },
+    body: JSON.stringify({
+      model: 'gpt-4o-mini',
+      messages: [{ role: 'user', content: prompt }],
+      temperature: 0.2,
+      max_tokens: 1000,
+    }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(`OpenAI error ${res.status}: ${(err as any)?.error?.message ?? res.statusText}`);
+  }
+  const data = await res.json();
+  return data.choices?.[0]?.message?.content ?? '';
+}
+
+async function callOpenAIVision(base64: string, mimeType: string, prompt: string): Promise<string> {
+  const res = await fetch('https://api.openai.com/v1/chat/completions', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${API_KEY}` },
+    body: JSON.stringify({
+      model: 'gpt-4o-mini',
+      messages: [{
+        role: 'user',
+        content: [
+          { type: 'text', text: prompt },
+          { type: 'image_url', image_url: { url: `data:${mimeType};base64,${base64}`, detail: 'high' } },
+        ],
+      }],
+      temperature: 0.1,
+      max_tokens: 2000,
+    }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(`OpenAI Vision error ${res.status}: ${(err as any)?.error?.message ?? res.statusText}`);
+  }
+  const data = await res.json();
+  return data.choices?.[0]?.message?.content ?? '';
+}
+
+// ─── Anthropic ────────────────────────────────────────────────────────────────
+
+async function callAnthropicChat(prompt: string): Promise<string> {
+  const res = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': API_KEY,
+      'anthropic-version': '2023-06-01',
+      'anthropic-dangerous-direct-browser-access': 'true',
+    },
+    body: JSON.stringify({
+      model: 'claude-haiku-4-5',
+      max_tokens: 1000,
+      messages: [{ role: 'user', content: prompt }],
+    }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(`Anthropic error ${res.status}: ${(err as any)?.error?.message ?? res.statusText}`);
+  }
+  const data = await res.json();
+  return data.content?.[0]?.text ?? '';
+}
+
+async function callAnthropicVision(base64: string, mimeType: string, prompt: string): Promise<string> {
+  const validMime = (['image/jpeg', 'image/png', 'image/gif', 'image/webp'] as const).includes(mimeType as any)
+    ? (mimeType as 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp')
+    : 'image/jpeg';
+
+  const res = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': API_KEY,
+      'anthropic-version': '2023-06-01',
+      'anthropic-dangerous-direct-browser-access': 'true',
+    },
+    body: JSON.stringify({
+      model: 'claude-haiku-4-5',
+      max_tokens: 2000,
+      messages: [{
+        role: 'user',
+        content: [
+          { type: 'image', source: { type: 'base64', media_type: validMime, data: base64 } },
+          { type: 'text', text: prompt },
+        ],
+      }],
+    }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(`Anthropic Vision error ${res.status}: ${(err as any)?.error?.message ?? res.statusText}`);
+  }
+  const data = await res.json();
+  return data.content?.[0]?.text ?? '';
+}
+
+// ─── watsonx.ai ───────────────────────────────────────────────────────────────
+
+async function callWatsonxChat(prompt: string): Promise<string> {
+  const watsonxUrl   = import.meta.env.VITE_WATSONX_URL   || '';
+  const watsonxToken = import.meta.env.VITE_WATSONX_TOKEN || '';
+  const watsonxModel = import.meta.env.VITE_WATSONX_MODEL || 'ibm/granite-3-8b-instruct';
+  const projectId    = import.meta.env.VITE_WATSONX_PROJECT_ID || '';
+
+  if (!watsonxUrl || !watsonxToken) {
+    throw new Error('watsonx.ai is not configured. Set VITE_WATSONX_URL and VITE_WATSONX_TOKEN in .env');
+  }
+
+  const res = await fetch(`${watsonxUrl}/ml/v1/text/generation?version=2023-05-29`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${watsonxToken}`,
+    },
+    body: JSON.stringify({
+      model_id: watsonxModel,
+      project_id: projectId,
+      input: prompt,
+      parameters: { max_new_tokens: 1000, temperature: 0.2 },
+    }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(`watsonx error ${res.status}: ${JSON.stringify((err as any)?.errors ?? res.statusText)}`);
+  }
+  const data = await res.json();
+  return data.results?.[0]?.generated_text ?? '';
+}
+
+// ─── Mock fallback (deterministic, no API key needed) ────────────────────────
+
+function mockAnalyze(text: string): ExtractedContent {
   const lower = text.toLowerCase();
   const subjects: string[] = [];
   const chapters: string[] = [];
@@ -54,6 +344,8 @@ export async function analyzeExtractedText(text: string): Promise<ExtractedConte
   if (lower.includes('english')) subjects.push('English');
   if (lower.includes('evs') || lower.includes('plant')) subjects.push('EVS');
   if (lower.includes('hindi')) subjects.push('Hindi');
+  if (lower.includes('science')) subjects.push('Science');
+  if (lower.includes('social')) subjects.push('Social Studies');
 
   if (lower.includes('multiplication') || lower.includes('×')) chapters.push('Multiplication');
   if (lower.includes('division') || lower.includes('÷')) chapters.push('Division');
@@ -70,14 +362,14 @@ export async function analyzeExtractedText(text: string): Promise<ExtractedConte
     : undefined;
 
   return {
-    subjects: subjects.length ? subjects : ['Unknown'],
-    chapters: chapters.length ? chapters : [],
-    topics: topics.length ? topics : [],
-    definitions: [],
+    subjects:        subjects.length ? subjects : ['Unknown'],
+    chapters:        chapters.length ? chapters : [],
+    topics:          topics.length   ? topics   : [],
+    definitions:     [],
     importantPoints: ['Review uploaded material carefully'],
-    homework: homework || undefined,
+    homework:        homework || undefined,
     confidenceScore: 0.8,
-    needsReview: subjects.length === 0,
+    needsReview:     subjects.length === 0,
   };
 }
 
@@ -92,9 +384,39 @@ export interface StudyGuideSection {
 }
 
 export async function generateStudyGuide(subject: string, chapter: string): Promise<StudyGuideSection> {
-  await delay(2500);
+  if (PROVIDER !== 'mock') {
+    const prompt = `You are an AI tutor for Indian primary school children.
+Generate a structured study guide for subject "${subject}", chapter "${chapter}".
+Return ONLY valid JSON — no markdown fences, no commentary — matching this shape exactly:
+{
+  "whatToRead": ["string"],
+  "whatToHighlight": [{"item":"string","reason":"string","memorize":true|false}],
+  "whatToUnderstand": [{"concept":"string","explanation":"string","example":"string","commonMistakes":["string"]}],
+  "whatToPractice": ["string"],
+  "quickRevision": {
+    "keyPoints": ["string"],
+    "importantWords": ["string"],
+    "oralQuestions": ["string"]
+  }
+}`;
+    let raw = '';
+    if (PROVIDER === 'openai')    raw = await callOpenAIChat(prompt);
+    else if (PROVIDER === 'anthropic') raw = await callAnthropicChat(prompt);
+    else if (PROVIDER === 'watsonx')   raw = await callWatsonxChat(prompt);
 
-  // Mock study guides for demo subjects
+    const cleaned = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim();
+    try {
+      return JSON.parse(cleaned) as StudyGuideSection;
+    } catch {
+      // Fall through to mock if JSON is invalid
+    }
+  }
+
+  await delay(2500);
+  return getMockStudyGuide(subject, chapter);
+}
+
+function getMockStudyGuide(subject: string, chapter: string): StudyGuideSection {
   const guides: Record<string, StudyGuideSection> = {
     'Mathematics|Multiplication': {
       whatToRead: [
@@ -108,14 +430,12 @@ export async function generateStudyGuide(subject: string, chapter: string): Prom
         { item: 'Commutative property: a × b = b × a', reason: 'Saves time when solving problems', memorize: true },
         { item: 'Multiplication as repeated addition', reason: 'Helps understand the concept deeply', memorize: false },
       ],
-      whatToUnderstand: [
-        {
-          concept: 'Multiplication as repeated addition',
-          explanation: 'Multiplication is just a quick way to add the same number many times. 4 × 3 means "4 added 3 times": 4 + 4 + 4 = 12.',
-          example: '5 × 4 = 5 + 5 + 5 + 5 = 20',
-          commonMistakes: ['Confusing 6 × 7 and 7 × 6 (they are the same!)', 'Forgetting zero-times-any-number is always 0'],
-        },
-      ],
+      whatToUnderstand: [{
+        concept: 'Multiplication as repeated addition',
+        explanation: 'Multiplication is just a quick way to add the same number many times. 4 × 3 means "4 added 3 times": 4 + 4 + 4 = 12.',
+        example: '5 × 4 = 5 + 5 + 5 + 5 = 20',
+        commonMistakes: ['Confusing 6 × 7 and 7 × 6 (they are the same!)', 'Forgetting zero-times-any-number is always 0'],
+      }],
       whatToPractice: [
         'Fill in multiplication tables (2× to 10×)',
         'Solve word problems from the textbook',
@@ -141,14 +461,12 @@ export async function generateStudyGuide(subject: string, chapter: string): Prom
         { item: 'Photosynthesis – how plants make food', reason: 'Key concept for short answers', memorize: true },
         { item: 'Types of roots: taproot and fibrous root', reason: 'Often asked with examples', memorize: true },
       ],
-      whatToUnderstand: [
-        {
-          concept: 'Photosynthesis',
-          explanation: 'Plants make their own food using sunlight, water from roots, and air from leaves. This process is called photosynthesis and it happens in the leaves.',
-          example: 'A mango tree uses sunlight on its leaves to make food for the whole tree.',
-          commonMistakes: ['Thinking plants eat soil (they only get minerals from soil)', 'Forgetting that photosynthesis needs sunlight'],
-        },
-      ],
+      whatToUnderstand: [{
+        concept: 'Photosynthesis',
+        explanation: 'Plants make their own food using sunlight, water from roots, and air from leaves. This process is called photosynthesis and it happens in the leaves.',
+        example: 'A mango tree uses sunlight on its leaves to make food for the whole tree.',
+        commonMistakes: ['Thinking plants eat soil (they only get minerals from soil)', 'Forgetting that photosynthesis needs sunlight'],
+      }],
       whatToPractice: [
         'Label a diagram of a plant',
         'Match each part with its function',
@@ -163,16 +481,18 @@ export async function generateStudyGuide(subject: string, chapter: string): Prom
     },
   };
 
-  const key = `${subject}|${chapter}`;
-  return guides[key] || {
+  return guides[`${subject}|${chapter}`] || {
     whatToRead: [`Read the complete chapter on ${chapter}`, 'Review all definitions', 'Study all examples given in the textbook'],
     whatToHighlight: [
       { item: 'All definitions in the chapter', reason: 'Definitions are frequently tested', memorize: true },
       { item: 'Important examples', reason: 'Examples help understand concepts', memorize: false },
     ],
-    whatToUnderstand: [
-      { concept: chapter, explanation: `${chapter} is an important topic in ${subject}. Make sure to understand all the concepts clearly.`, example: 'Refer to textbook examples', commonMistakes: ['Not reading the complete chapter', 'Skipping examples'] },
-    ],
+    whatToUnderstand: [{
+      concept: chapter,
+      explanation: `${chapter} is an important topic in ${subject}. Make sure to understand all the concepts clearly.`,
+      example: 'Refer to textbook examples',
+      commonMistakes: ['Not reading the complete chapter', 'Skipping examples'],
+    }],
     whatToPractice: ['Answer all exercise questions in the textbook', 'Create 10 practice questions', 'Revise all definitions'],
     quickRevision: {
       keyPoints: ['Read all definitions', 'Practice all examples', 'Revise the entire chapter'],
@@ -184,7 +504,7 @@ export async function generateStudyGuide(subject: string, chapter: string): Prom
 
 // ─── Exam Study Plan ──────────────────────────────────────────────────────────
 
-export async function generateExamPlan(examName: string, daysLeft: number, subjects: string[]): Promise<string[]> {
+export async function generateExamPlan(_examName: string, daysLeft: number, subjects: string[]): Promise<string[]> {
   await delay(1500);
   const plan: string[] = [];
   subjects.forEach((sub, i) => {
@@ -204,99 +524,30 @@ export async function generateQuestionPaper(config: QuestionPaperConfig): Promis
   let qIdx = 0;
 
   const sampleQs: Record<QuestionType, (subject: string, idx: number) => Question> = {
-    mcq: (sub, i) => ({
-      id: `q-${++qIdx}`,
-      type: 'mcq',
-      question: `Sample MCQ question ${i + 1} for ${sub}`,
-      options: ['Option A', 'Option B', 'Option C', 'Option D'],
-      answer: 'Option A',
-      explanation: 'Option A is correct because it matches the textbook definition.',
-      marks: 1,
-      topic: config.sourceChapters[0] || sub,
-    }),
-    fill_blanks: (sub, i) => ({
-      id: `q-${++qIdx}`,
-      type: 'fill_blanks',
-      question: `The ___ is an important concept in ${sub} (question ${i + 1})`,
-      answer: 'key term',
-      explanation: 'This key term is defined in chapter 1.',
-      marks: 1,
-      topic: config.sourceChapters[0] || sub,
-    }),
-    true_false: (sub, i) => ({
-      id: `q-${++qIdx}`,
-      type: 'true_false',
-      question: `Statement ${i + 1}: This statement about ${sub} is true.`,
-      answer: 'True',
-      explanation: 'This is true as stated in the textbook.',
-      marks: 1,
-      topic: config.sourceChapters[0] || sub,
-    }),
-    short_answer: (sub, i) => ({
-      id: `q-${++qIdx}`,
-      type: 'short_answer',
-      question: `Explain concept ${i + 1} from ${sub} in your own words.`,
-      answer: 'Sample short answer response with key points.',
-      explanation: 'A good answer should include the definition and one example.',
-      marks: 2,
-      topic: config.sourceChapters[0] || sub,
-    }),
-    long_answer: (sub, i) => ({
-      id: `q-${++qIdx}`,
-      type: 'long_answer',
-      question: `Write a detailed note on topic ${i + 1} in ${sub}.`,
-      answer: 'Sample long answer covering introduction, main points, and conclusion.',
-      explanation: 'The answer should be 4–6 sentences covering all key aspects.',
-      marks: 5,
-      topic: config.sourceChapters[0] || sub,
-    }),
-    one_word: (sub, i) => ({
-      id: `q-${++qIdx}`, type: 'one_word', question: `One-word answer ${i + 1} for ${sub}:`, answer: 'Answer', marks: 1, topic: sub,
-    }),
-    match_following: (sub, i) => ({
-      id: `q-${++qIdx}`, type: 'match_following', question: `Match column A with column B (${sub}, set ${i + 1}):\nA1: Term 1\nA2: Term 2\n\nB1: Definition 2\nB2: Definition 1`, answer: 'A1 – B2, A2 – B1', marks: 2, topic: sub,
-    }),
-    compare_contrast: (sub, i) => ({
-      id: `q-${++qIdx}`, type: 'compare_contrast', question: `Compare and contrast the two concepts in ${sub} (set ${i + 1}).`, answer: 'Similarities: Both are... Differences: First is... while second is...', marks: 3, topic: sub,
-    }),
-    word_meanings: (sub, i) => ({
-      id: `q-${++qIdx}`, type: 'word_meanings', question: `Write the meaning of this word from ${sub} (word ${i + 1}): "example"`, answer: 'A representative instance used to illustrate a concept.', marks: 1, topic: sub,
-    }),
-    opposites: (sub, i) => ({
-      id: `q-${++qIdx}`, type: 'opposites', question: `Write the opposite of the word (${sub}, ${i + 1}): "hot"`, answer: 'cold', marks: 1, topic: sub,
-    }),
-    synonyms: (sub, i) => ({
-      id: `q-${++qIdx}`, type: 'synonyms', question: `Write a synonym for (${sub}, ${i + 1}): "happy"`, answer: 'joyful', marks: 1, topic: sub,
-    }),
-    give_reasons: (sub, i) => ({
-      id: `q-${++qIdx}`, type: 'give_reasons', question: `Give a reason why concept ${i + 1} is important in ${sub}.`, answer: 'Because it forms the foundation of understanding this topic.', marks: 2, topic: sub,
-    }),
-    name_following: (sub, i) => ({
-      id: `q-${++qIdx}`, type: 'name_following', question: `Name the following (${sub}, ${i + 1}): The process described here is called ___`, answer: 'The process name', marks: 1, topic: sub,
-    }),
-    identify_correct: (sub, i) => ({
-      id: `q-${++qIdx}`, type: 'identify_correct', question: `Identify the correct statement about ${sub} (set ${i + 1}):\na) Correct\nb) Incorrect\nc) Incorrect\nd) Incorrect`, answer: 'a) Correct', marks: 1, topic: sub,
-    }),
-    rearrange_words: (sub, i) => ({
-      id: `q-${++qIdx}`, type: 'rearrange_words', question: `Rearrange the words to form a correct sentence (${sub}, ${i + 1}):\nplants / food / make / their / own`, answer: 'Plants make their own food.', marks: 1, topic: sub,
-    }),
-    grammar: (sub, i) => ({
-      id: `q-${++qIdx}`, type: 'grammar', question: `Grammar exercise ${i + 1}: Fill in the correct form of the verb in brackets.\nShe ___ (go) to school every day.`, answer: 'goes', explanation: 'Use third-person singular present tense.', marks: 1, topic: sub,
-    }),
-    math_problems: (sub, i) => ({
-      id: `q-${++qIdx}`, type: 'math_problems', question: `Solve (${i + 1}): A shopkeeper has 48 pens. He packs them in groups of 6. How many groups will he make?`, answer: '48 ÷ 6 = 8 groups', explanation: 'Divide total by group size.', marks: 2, topic: sub,
-    }),
-    application_based: (sub, i) => ({
-      id: `q-${++qIdx}`, type: 'application_based', question: `Application question ${i + 1}: How would you apply what you learned about ${sub} in real life? Give an example.`, answer: 'Sample real-life application.', marks: 3, topic: sub,
-    }),
+    mcq: (sub, i) => ({ id: `q-${++qIdx}`, type: 'mcq', question: `Sample MCQ question ${i + 1} for ${sub}`, options: ['Option A', 'Option B', 'Option C', 'Option D'], answer: 'Option A', explanation: 'Option A is correct because it matches the textbook definition.', marks: 1, topic: config.sourceChapters[0] || sub }),
+    fill_blanks: (sub, i) => ({ id: `q-${++qIdx}`, type: 'fill_blanks', question: `The ___ is an important concept in ${sub} (question ${i + 1})`, answer: 'key term', explanation: 'This key term is defined in chapter 1.', marks: 1, topic: config.sourceChapters[0] || sub }),
+    true_false: (sub, i) => ({ id: `q-${++qIdx}`, type: 'true_false', question: `Statement ${i + 1}: This statement about ${sub} is true.`, answer: 'True', explanation: 'This is true as stated in the textbook.', marks: 1, topic: config.sourceChapters[0] || sub }),
+    short_answer: (sub, i) => ({ id: `q-${++qIdx}`, type: 'short_answer', question: `Explain concept ${i + 1} from ${sub} in your own words.`, answer: 'Sample short answer response with key points.', explanation: 'A good answer should include the definition and one example.', marks: 2, topic: config.sourceChapters[0] || sub }),
+    long_answer: (sub, i) => ({ id: `q-${++qIdx}`, type: 'long_answer', question: `Write a detailed note on topic ${i + 1} in ${sub}.`, answer: 'Sample long answer covering introduction, main points, and conclusion.', explanation: 'The answer should be 4–6 sentences covering all key aspects.', marks: 5, topic: config.sourceChapters[0] || sub }),
+    one_word: (sub, i) => ({ id: `q-${++qIdx}`, type: 'one_word', question: `One-word answer ${i + 1} for ${sub}:`, answer: 'Answer', marks: 1, topic: sub }),
+    match_following: (sub, i) => ({ id: `q-${++qIdx}`, type: 'match_following', question: `Match column A with column B (${sub}, set ${i + 1}):\nA1: Term 1\nA2: Term 2\n\nB1: Definition 2\nB2: Definition 1`, answer: 'A1 – B2, A2 – B1', marks: 2, topic: sub }),
+    compare_contrast: (sub, i) => ({ id: `q-${++qIdx}`, type: 'compare_contrast', question: `Compare and contrast the two concepts in ${sub} (set ${i + 1}).`, answer: 'Similarities: Both are... Differences: First is... while second is...', marks: 3, topic: sub }),
+    word_meanings: (sub, i) => ({ id: `q-${++qIdx}`, type: 'word_meanings', question: `Write the meaning of this word from ${sub} (word ${i + 1}): "example"`, answer: 'A representative instance used to illustrate a concept.', marks: 1, topic: sub }),
+    opposites: (sub, i) => ({ id: `q-${++qIdx}`, type: 'opposites', question: `Write the opposite of the word (${sub}, ${i + 1}): "hot"`, answer: 'cold', marks: 1, topic: sub }),
+    synonyms: (sub, i) => ({ id: `q-${++qIdx}`, type: 'synonyms', question: `Write a synonym for (${sub}, ${i + 1}): "happy"`, answer: 'joyful', marks: 1, topic: sub }),
+    give_reasons: (sub, i) => ({ id: `q-${++qIdx}`, type: 'give_reasons', question: `Give a reason why concept ${i + 1} is important in ${sub}.`, answer: 'Because it forms the foundation of understanding this topic.', marks: 2, topic: sub }),
+    name_following: (sub, i) => ({ id: `q-${++qIdx}`, type: 'name_following', question: `Name the following (${sub}, ${i + 1}): The process described here is called ___`, answer: 'The process name', marks: 1, topic: sub }),
+    identify_correct: (sub, i) => ({ id: `q-${++qIdx}`, type: 'identify_correct', question: `Identify the correct statement about ${sub} (set ${i + 1}):\na) Correct\nb) Incorrect\nc) Incorrect\nd) Incorrect`, answer: 'a) Correct', marks: 1, topic: sub }),
+    rearrange_words: (sub, i) => ({ id: `q-${++qIdx}`, type: 'rearrange_words', question: `Rearrange the words to form a correct sentence (${sub}, ${i + 1}):\nplants / food / make / their / own`, answer: 'Plants make their own food.', marks: 1, topic: sub }),
+    grammar: (sub, i) => ({ id: `q-${++qIdx}`, type: 'grammar', question: `Grammar exercise ${i + 1}: Fill in the correct form of the verb in brackets.\nShe ___ (go) to school every day.`, answer: 'goes', explanation: 'Use third-person singular present tense.', marks: 1, topic: sub }),
+    math_problems: (sub, i) => ({ id: `q-${++qIdx}`, type: 'math_problems', question: `Solve (${i + 1}): A shopkeeper has 48 pens. He packs them in groups of 6. How many groups will he make?`, answer: '48 ÷ 6 = 8 groups', explanation: 'Divide total by group size.', marks: 2, topic: sub }),
+    application_based: (sub, i) => ({ id: `q-${++qIdx}`, type: 'application_based', question: `Application question ${i + 1}: How would you apply what you learned about ${sub} in real life? Give an example.`, answer: 'Sample real-life application.', marks: 3, topic: sub }),
   };
 
   for (const qt of config.questionTypes) {
     const gen = sampleQs[qt.type];
     if (gen) {
-      for (let i = 0; i < qt.quantity; i++) {
-        questions.push(gen(config.subject, i));
-      }
+      for (let i = 0; i < qt.quantity; i++) questions.push(gen(config.subject, i));
     }
   }
 

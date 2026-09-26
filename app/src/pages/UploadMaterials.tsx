@@ -22,7 +22,7 @@ interface UploadForm {
 }
 
 export function UploadMaterials() {
-  const { selectedChild, addMaterial, getChildMaterials, deleteMaterial } = useApp();
+  const { selectedChild, addMaterial, getChildMaterials, deleteMaterial, upsertSubject, upsertChapter, upsertTopic } = useApp();
   const [step, setStep] = useState<UploadStep>('select');
   const [fileType, setFileType] = useState<'image' | 'pdf' | 'link'>('image');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -116,6 +116,23 @@ export function UploadMaterials() {
       };
 
       addMaterial(material);
+
+      // ── Bridge: upsert subjects / chapters / topics into the study curriculum ──
+      if (structured.subjects.length > 0 && structured.subjects[0] !== 'Unknown') {
+        // Use the form-selected subject as the canonical name when the AI returns
+        // generic names, but prefer AI-detected subjects when they differ.
+        const subjectsToAdd = structured.subjects.length > 0 ? structured.subjects : [form.subject];
+        for (const subjectName of subjectsToAdd) {
+          const subjectId = upsertSubject(selectedChild.id, subjectName);
+          for (const chapterName of structured.chapters) {
+            const chapterId = upsertChapter(subjectId, chapterName);
+            for (const topicName of structured.topics) {
+              upsertTopic(chapterId, topicName);
+            }
+          }
+        }
+      }
+
       setStep('done');
     } catch (err) {
       setError(String(err));
